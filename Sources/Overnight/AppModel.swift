@@ -175,11 +175,18 @@ final class AppModel: ObservableObject {
 
     // MARK: - Notifications
 
+    /// UNUserNotificationCenter traps when the process has no bundle identifier, which happens
+    /// if the binary is run directly instead of from the app bundle. The menu-bar warning does
+    /// not depend on notifications, so losing them is survivable; crashing is not.
+    private var notificationsAvailable: Bool { Bundle.main.bundleIdentifier != nil }
+
     private func requestNotificationPermission() {
+        guard notificationsAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     private func notifyUnplugged() {
+        guard notificationsAvailable else { return }
         let content = UNMutableNotificationContent()
         content.title = "Overnight: power unplugged"
         content.body = "Sleep is still disabled system-wide. Approve the prompt to restore your settings now."

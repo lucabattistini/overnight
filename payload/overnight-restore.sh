@@ -109,7 +109,7 @@ fi
 # It deliberately does not delete itself: sh reads a script lazily, so removing the file that
 # is currently executing is not safe. What is left behind is inert — nothing references it
 # once the plist is gone, it is root-owned so it cannot be tampered with, and the next enable
-# overwrites it. `docs/UNINSTALL` in the README removes it.
+# overwrites it. The README's Uninstall section removes it.
 /bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
 rm -f "$PLIST"
 rm -f "$STATE_FILE"

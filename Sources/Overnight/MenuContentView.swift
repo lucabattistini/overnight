@@ -8,6 +8,13 @@ struct MenuContentView: View {
     @State private var hour = 7
     @State private var minute = 30
 
+    /// Common wake times, as minutes since midnight.
+    private static let presets = [6 * 60 + 30, 7 * 60 + 30, 8 * 60 + 30]
+
+    private static func label(for minutesOfDay: Int) -> String {
+        String(format: "%02d:%02d", minutesOfDay / 60, minutesOfDay % 60)
+    }
+
     private static let deadlineFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE HH:mm"
@@ -159,10 +166,10 @@ struct MenuContentView: View {
                 }
             }
             HStack(spacing: 6) {
-                ForEach([(6, 30), (7, 30), (8, 30)], id: \.0) { preset in
-                    Button(String(format: "%02d:%02d", preset.0, preset.1)) {
-                        hour = preset.0
-                        minute = preset.1
+                ForEach(Self.presets, id: \.self) { minutesOfDay in
+                    Button(Self.label(for: minutesOfDay)) {
+                        hour = minutesOfDay / 60
+                        minute = minutesOfDay % 60
                     }
                     .font(.caption)
                 }

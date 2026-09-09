@@ -195,6 +195,28 @@ else
 fi
 teardown
 
+# --- enable: an unusable capture must abort ------------------------------------------------
+echo "enable / unusable capture"
+
+setup
+# A managed key with a value pmset should never emit. The capture must fail loudly rather than
+# quietly omitting the key, because an omitted key is a key that never gets restored.
+printf 'AC Power:\n sleep                banana\n powernap             1\n' > "$OVERNIGHT_STUB_CUSTOM"
+if enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    bad "aborts on an unusable value rather than dropping the key"
+else ok "aborts on an unusable value rather than dropping the key"; fi
+assert_absent "no pmset write after an unusable capture" "$(cat "$OVERNIGHT_TEST_LOG")" "pmset -c sleep 0"
+check "writes no state file after an unusable capture" \
+    "$([ -f "$WORK/support/state.conf" ] && echo yes || echo no)" "no"
+teardown
+
+setup
+printf 'AC Power:\n sleep                999999\n' > "$OVERNIGHT_STUB_CUSTOM"
+if enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    bad "aborts on an overlong captured value"
+else ok "aborts on an overlong captured value"; fi
+teardown
+
 # --- enable: a failure to arm must not leave the machine changed --------------------------
 echo "enable / failure to arm"
 

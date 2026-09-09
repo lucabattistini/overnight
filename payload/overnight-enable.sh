@@ -92,7 +92,10 @@ fi
 # Reading pmset needs no privilege, but doing the capture here rather than in the app means
 # no user-writable file is ever consumed by the privileged side.
 capture_profiles() {
-    "$PMSET" -g custom | awk -v keys="$MANAGED_KEYS" '
+    # awk's exit status has to be captured before the sort, because a pipeline reports only its
+    # last command's status. Sorting inside the pipe would mask a rejected value and silently
+    # drop it from the capture -- which would mean never restoring it.
+    _raw=$("$PMSET" -g custom | awk -v keys="$MANAGED_KEYS" '
         BEGIN { n = split(keys, k, " "); for (i = 1; i <= n; i++) want[k[i]] = 1 }
         /^Battery Power:/ { section = "battery"; next }
         /^AC Power:/      { section = "ac";      next }
@@ -106,7 +109,8 @@ capture_profiles() {
             }
             printf "%s_%s %s\n", section, $1, $2
         }
-    ' | sort
+    ') || return 1
+    printf '%s\n' "$_raw" | sort
 }
 
 # disablesleep is undocumented and never appears in 'pmset -g custom'. It reads back as the
