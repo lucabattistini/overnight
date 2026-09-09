@@ -44,7 +44,7 @@ Running the script by hand has three failure modes that matter. The command is a
 **Power profile, capture, and restore**
 
 - R6. Before any setting is changed, the app captures the current values of the settings it is about to modify, for both the AC and battery profiles, plus the system-wide sleep-disable flag.
-- R7. The overnight profile sets `disablesleep 1` system-wide and sets `sleep 0`, `disksleep 0`, `powernap 0`, `displaysleep 2`, and `tcpkeepalive 1` on the AC profile only.
+- R7. The overnight profile sets `disablesleep 1` system-wide and sets `sleep 0`, `disksleep 0`, `powernap 0`, and `displaysleep 2` on the AC profile only. `tcpkeepalive` is captured but never written: the hardware spike could not verify its `-c` scoping, because the machine's baseline was already 1 on both profiles.
 - R8. The battery profile is never written during enable.
 - R9. Restore replays the captured values verbatim. It never writes a hardcoded default and never invokes `pmset restoredefaults`.
 - R10. A setting absent from the capture — because the installed macOS or hardware does not expose it — is recorded as absent and is not written on restore.
@@ -67,8 +67,8 @@ Running the script by hand has three failure modes that matter. The command is a
 
 **AC-power safety**
 
-- R21. While Overnight is active, the app watches the power source and warns the user when the machine moves to battery.
-- R22. The warning states that the overnight profile is still in force and offers a one-click turn-off that uses the normal authorization prompt.
+- R21. While Overnight is active, the app watches the power source and reacts the moment the machine moves to battery.
+- R22. On unplug the app notifies the user and starts the restore immediately, which raises the authorization prompt. If the prompt is not answered, the warning stays visible and the deadline job remains the backstop.
 
 **Distribution and documentation**
 
@@ -118,8 +118,11 @@ Running the script by hand has three failure modes that matter. The command is a
 All are deferred, not blocking. Each is resolved by a manual check on hardware and none changes the unit boundaries below.
 
 - Whether `displaysleep 2` on the AC profile is enough to keep the internal panel dark for the whole run, or whether the panel wakes on external input. Deferred; the value is captured and restored either way.
-- Whether `launchd` fires a `StartCalendarInterval` job punctually on a machine held awake by `disablesleep 1`, versus deferring it. Research indicates a missed interval coalesces to the next wake, which is the desired behavior for the crash case, but punctuality on an awake machine is a hardware check.
-- Whether GitHub's macOS runner image still ships `shellcheck`. If not, the CI job installs it via Homebrew.
+- Whether `launchd` fires a `StartCalendarInterval` job punctually on a machine held awake by `disablesleep 1`. Resolved by the 2026-09-09 spike: the job fired as uid 0, exited 0, replayed the captured value, and removed itself.
+- Whether closed-lid stay-awake holds beyond 90 seconds, and how the machine behaves thermally under sustained closed-lid load. Still open; the spike observed 89 seconds with an unrelated `caffeinate -i` held by another process. `docs/MANUAL-CHECKS.md` M6 re-tests it standalone.
+- How the machine behaves on actual AC loss while `disablesleep` is 1. Still open; `docs/MANUAL-CHECKS.md` M7 covers it.
+- Whether `disablesleep` survives a reboot. Still open, and low consequence: the app derives status from live `pmset` on launch, so a surviving flag is reported rather than assumed away.
+- Whether `tcpkeepalive` scopes with `-c`. Unresolvable on the spike machine, whose baseline was already 1 on both profiles. Settled by not writing the setting at all.
 
 ### Sources
 
@@ -139,13 +142,13 @@ All are deferred, not blocking. Each is resolved by a manual check on hardware a
 
 - KTD1. **SwiftUI `MenuBarExtra` on a SwiftPM package split into `OvernightCore` and `Overnight`** (session-settled: user-directed — chosen over an AppKit `NSStatusItem` app or a CLI-only tool: `MenuBarExtra` is the smallest native path to a menu-bar control). The library/executable split exists so parsing, deadline, and validation logic are testable with `swift test`; a SwiftUI `App` scene in an executable target is not. Governs R1, R2.
 - KTD2. **Privilege via `NSAppleScript` running `do shell script … with administrator privileges`** (session-settled: user-directed — chosen over `SMJobBless`, XPC, or a sudoers rule: it is the simplest native authorization flow and leaves no persistent privileged surface). Each authorization runs exactly one `/bin/sh <bundled-script> <validated-args>` invocation, because TN2065 states multi-command scripts misbehave under this flag.
-- KTD3. **`disablesleep` is applied with `-a`; the timer settings are applied with `-c`.** `disablesleep` is an undocumented system-wide switch with no honest per-power-source form — it is written to `SystemPowerSettings` and read back as `SleepDisabled`, so `pmset -c disablesleep 1` cannot scope it to AC. Applying it with `-a` is the honest fallback and is stated as a limitation in the README. The five timer settings do scope, so they are written with `-c` only, which is what keeps R8 true. This is the correction to the original one-line script. Governs R7, R8.
+- KTD3. **`disablesleep` is applied with `-a`; the timer settings are applied with `-c`.** `disablesleep` is an undocumented system-wide switch with no per-power-source form. The 2026-09-09 hardware spike on macOS 26.6 confirmed that `pmset -c disablesleep 1` exits 0, prints no warning, and writes the global `SleepDisabled` flag regardless of the `-c`. The same spike confirmed `sleep`, `disksleep`, `displaysleep`, and `powernap` do scope correctly with `-c`. Applying it with `-a` is the honest fallback and is stated as a limitation in the README. The five timer settings do scope, so they are written with `-c` only, which is what keeps R8 true. This is the correction to the original one-line script. Governs R7, R8.
 - KTD4. **Capture reads two commands, not one.** `pmset -g custom` yields the per-profile timer values under its `Battery Power:` and `AC Power:` headers. It does not contain `disablesleep`. The system-wide flag is read from `pmset -g`'s `System-wide power settings:` block as `SleepDisabled`. A capture that reads only `pmset -g custom` cannot restore the flag it set. Governs R6.
 - KTD5. **Auto-off is a self-removing one-shot `LaunchDaemon` with `StartCalendarInterval` pinned to month, day, hour, and minute** (session-settled: user-directed — chosen over a persistent daemon or heartbeat lease: the restore needs root at the deadline but nothing about it justifies a long-lived service). Chosen over a detached `sh -c 'sleep N; …'` process spawned inside the admin prompt, because that process dies with a logout or a crash and leaves no trace to recover from, whereas the plist is discoverable state. `launchd` coalescing a missed interval to the next wake is the desired behavior for the crash case. Governs R14.
 - KTD6. **Privileged artifacts live in `/Library/Application Support/Overnight/`, and the payload hard-verifies that directory before use.** The payload requires the path to be a real directory, not a symlink, owned `0:0` with mode `0755`, and aborts otherwise rather than creating or repairing it in place. This closes the pre-created-directory substitution attack independently of how the parent directory is permissioned. Governs R13.
 - KTD7. **The two privileged scripts are static files in the repository, copied into `Overnight.app/Contents/Resources/`.** No shell text is generated at runtime. The app passes only validated arguments. `overnight-restore.sh` is additionally installed to the root-owned directory with `install -o root -g wheel -m 0755` so the copy that `launchd` executes is not the user-writable one inside the app bundle. Governs R13, R15.
 - KTD8. **Status is a four-state derivation over three signals**: `SleepDisabled` from `pmset -g`, the presence and content of the root-owned state file, and the presence of the `LaunchDaemon` plist. The fourth state — sleep disabled with no state file — exists so the app never offers a restore it has no baseline for. Governs R17, R18, R20.
-- KTD9. **AC loss warns; it does not auto-restore.** The app subscribes to IOKit power-source change notifications, which is unprivileged. Acting on the notification needs root, and obtaining root without a prompt would need the privileged daemon that is out of scope. So the honest fallback is a notification plus a one-click turn-off through the normal prompt. Governs R21, R22.
+- KTD9. **AC loss starts the restore immediately; it cannot complete it unattended.** The app subscribes to IOKit power-source change notifications, which is unprivileged. Acting on the notification needs root, so unplugging posts a notification and raises the authorization prompt at once. Completing it without a prompt would need the persistent privileged daemon that is out of scope, so if nobody answers, the machine stays awake on battery until the deadline job fires. This limit is documented rather than engineered around. Governs R21, R22.
 - KTD10. **The `.app` is assembled by a script from `swift build` output rather than built from a checked-in `.xcodeproj`.** A hand-maintained project file is the larger moving part, and `swift build -c release --arch arm64 --arch x86_64` already produces the universal binary; the bundle is three directories and an `Info.plist`. Governs R23.
 - KTD11. **Restore never calls `pmset restoredefaults`.** That command resets power management as a group and would destroy settings Overnight never touched. Governs R9.
 
@@ -166,7 +169,7 @@ flowchart TB
     RS["overnight-restore.sh"]
   end
   subgraph disk["Root-owned on disk"]
-    ST["/Library/Application Support/Overnight/state.json"]
+    ST["/Library/Application Support/Overnight/state.conf"]
     SH["/Library/Application Support/Overnight/overnight-restore.sh"]
     PL["/Library/LaunchDaemons/dev.lucabattistini.overnight.restore.plist"]
   end
