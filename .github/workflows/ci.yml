@@ -28,6 +28,15 @@ jobs:
       - name: Payload harness
         run: sh tests/payload/run.sh
 
+      - name: Icon script syntax
+        run: python3 -m py_compile scripts/icons.py
+
+      # The .icns is committed rather than built during packaging, so this is what stops it
+      # drifting from the branding master. It compares decoded pixels, not compressed bytes,
+      # because zlib's output is allowed to differ between versions.
+      - name: Icon assets match the branding master
+        run: python3 scripts/icons.py verify
+
   macos:
     name: Build and test
     runs-on: macos-14
@@ -47,6 +56,23 @@ jobs:
         run: |
           test -f dist/Overnight.app/Contents/Resources/overnight-enable.sh
           test -f dist/Overnight.app/Contents/Resources/overnight-restore.sh
+
+      - name: The bundle must carry the icon Info.plist names
+        run: |
+          icon=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' \
+            dist/Overnight.app/Contents/Info.plist)
+          test -f "dist/Overnight.app/Contents/Resources/${icon}.icns"
+          # A .icns macOS refuses to read would still pass a file test, and the icns here is
+          # written by a Python script rather than by iconutil. Ask iconutil to take it apart
+          # again: that is the same reader the system uses.
+          iconutil --convert iconset \
+            --output "$RUNNER_TEMP/Overnight.iconset" \
+            "dist/Overnight.app/Contents/Resources/${icon}.icns"
+          for name in 16x16 16x16@2x 32x32 32x32@2x 128x128 128x128@2x \
+                      256x256 256x256@2x 512x512 512x512@2x; do
+            test -f "$RUNNER_TEMP/Overnight.iconset/icon_${name}.png" \
+              || { echo "icns is missing icon_${name}.png" >&2; exit 1; }
+          done
 
       - name: The binary must be universal
         run: |

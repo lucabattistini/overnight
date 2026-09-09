@@ -33,6 +33,11 @@ jobs:
       - name: Test
         run: swift test
 
+      # The .icns ships as a checked-in build product, so a release must not be the first thing
+      # to notice it drifted from the branding master.
+      - name: Icon assets match the branding master
+        run: python3 scripts/icons.py verify
+
       - name: Package
         env:
           OVERNIGHT_VERSION: ${{ steps.version.outputs.value }}
