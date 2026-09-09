@@ -77,7 +77,10 @@ final class AppModel: ObservableObject {
         // The deadline job can restore while the app is idle, and the menu should not keep
         // claiming Overnight is on for minutes afterwards.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            // Bound immutably before the hop: a `[weak self]` capture is a var, and a var
+            // cannot be referenced from concurrently-executing code.
+            guard let model = self else { return }
+            Task { @MainActor in model.refresh() }
         }
     }
 

@@ -229,6 +229,16 @@ assert_absent   "does not recapture the applied profile" "$UPDATED" "ac_sleep 0"
 assert_contains "moves the deadline"                   "$UPDATED" "deadline_epoch 1788010000"
 assert_absent   "drops the old deadline"               "$UPDATED" "deadline_epoch 1788000000"
 
+# The deadline line is the only thing allowed to change.
+printf '%s\n' "$ORIGINAL" | grep -v '^deadline_epoch ' > "$WORK/before.txt"
+printf '%s\n' "$UPDATED"  | grep -v '^deadline_epoch ' > "$WORK/after.txt"
+if diff -q "$WORK/before.txt" "$WORK/after.txt" >/dev/null; then
+    ok "changes nothing but the deadline"
+else
+    bad "changes nothing but the deadline"
+    diff "$WORK/before.txt" "$WORK/after.txt" || true
+fi
+
 # The whole point: restore must still put the real settings back.
 : > "$OVERNIGHT_TEST_LOG"
 run_restore >/dev/null 2>&1 || bad "restore after a deadline change succeeded"
