@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, without the leading v
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: Build and publish the DMG
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Package
+        env:
+          OVERNIGHT_VERSION: ${{ steps.version.outputs.value }}
+        run: sh scripts/make-dmg.sh
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Overnight.dmg \
+            --title "Overnight $GITHUB_REF_NAME" \
+            --notes "Unsigned build. macOS will refuse to open it on the first try: right-click the app in /Applications and choose Open, or allow it under System Settings > Privacy & Security. See the README for the full install and recovery steps."

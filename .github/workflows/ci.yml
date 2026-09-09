@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  shell:
+    name: Shell checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Syntax
+        run: sh -n payload/*.sh scripts/*.sh tests/payload/run.sh
+
+      - name: Lint
+        run: shellcheck payload/*.sh scripts/*.sh scripts/check-managed-keys.sh tests/payload/run.sh
+
+      - name: Managed-key drift
+        run: sh scripts/check-managed-keys.sh
+
+      - name: Payload harness
+        run: sh tests/payload/run.sh
+
+  macos:
+    name: Build and test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Build the app bundle
+        run: sh scripts/build-app.sh
+
+      - name: The bundle must carry the privileged payload
+        run: |
+          test -f dist/Overnight.app/Contents/Resources/overnight-enable.sh
+          test -f dist/Overnight.app/Contents/Resources/overnight-restore.sh
+
+      - name: The binary must be universal
+        run: |
+          file dist/Overnight.app/Contents/MacOS/Overnight | tee /dev/stderr | grep -q arm64
+          file dist/Overnight.app/Contents/MacOS/Overnight | tee /dev/stderr | grep -q x86_64
+
+      - name: Package the DMG
+        run: sh scripts/make-dmg.sh
+
+      - name: Payload harness on macOS
+        run: sh tests/payload/run.sh
