@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "${OVERNIGHT_STUB_UID:-0}"

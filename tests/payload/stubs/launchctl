@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "launchctl $*" >> "$OVERNIGHT_TEST_LOG"
+[ "${OVERNIGHT_STUB_LAUNCHCTL_FAIL:-0}" = "1" ] && exit 1
+exit 0

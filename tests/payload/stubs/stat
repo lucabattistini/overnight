@@ -1,0 +1,3 @@
+#!/bin/sh
+# BSD-flavoured stat stub: the payload only ever calls `stat -f '%u %g %Lp' <path>`.
+echo "${OVERNIGHT_STUB_STAT:-0 0 755}"

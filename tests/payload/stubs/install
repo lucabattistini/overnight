@@ -1,0 +1,13 @@
+#!/bin/sh
+# Minimal `install` covering the two forms the payload uses:
+#   install -d -o root -g wheel -m MODE DIR
+#   install    -o root -g wheel -m MODE SRC DST
+echo "install $*" >> "$OVERNIGHT_TEST_LOG"
+if [ "$1" = "-d" ]; then
+    shift 7
+    mkdir -p "$1"
+    exit 0
+fi
+shift 6
+cp "$1" "$2"
+exit 0

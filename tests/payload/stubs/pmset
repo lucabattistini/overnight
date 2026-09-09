@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stub pmset. Records every invocation, and replays canned output for the read paths.
+echo "pmset $*" >> "$OVERNIGHT_TEST_LOG"
+case "$1 $2" in
+    "-g custom") cat "$OVERNIGHT_STUB_CUSTOM" ;;
+    "-g ")       cat "$OVERNIGHT_STUB_LIVE" ;;
+esac
+case "$1" in
+    -g) exit 0 ;;
+esac
+exit 0
