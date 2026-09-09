@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="resources/branding/OvernightIcon-256.png"
+       alt="The Overnight app icon: a soft diagonal band of light across a near-black square"
+       width="128">
+</p>
+
 # Overnight
 
 A macOS menu-bar switch that keeps a MacBook awake overnight, on AC, with the lid closed — and puts your power settings back at a wake time you choose.
@@ -29,7 +35,7 @@ Overnight is unsigned. That is a deliberate scope decision, not an oversight —
 1. Download `Overnight.dmg` from [Releases](https://github.com/lucabattistini/overnight/releases).
 2. Drag `Overnight.app` to `/Applications`.
 3. The first launch will be blocked. Right-click the app and choose **Open**, then **Open** again in the dialog. Or open **System Settings → Privacy & Security**, find the blocked-app notice, and click **Open Anyway**.
-4. Overnight has no Dock icon. Look for the moon in the menu bar.
+4. Overnight has no Dock icon. Look for the curved band in the menu bar, up near the clock.
 
 To build it yourself on a Mac:
 
@@ -37,9 +43,17 @@ To build it yourself on a Mac:
 sh scripts/make-dmg.sh
 ```
 
+The app icon is a checked-in build product, not something the packaging scripts generate:
+`resources/Overnight.icns` is produced from `resources/branding/OvernightIconMaster.png` by
+`python3 scripts/icons.py build`, using nothing but the Python standard library. CI runs
+`python3 scripts/icons.py verify` on every push, so a stale or hand-edited icon fails the build
+rather than shipping.
+
 ## Usage
 
-Click the moon. Pick a wake time. Click **Turn On** and approve the administrator prompt.
+Click the menu bar icon. Pick a wake time. Click **Turn On** and approve the administrator prompt.
+
+The icon itself is the status. It is one curved band, drawn two ways: **broken in the middle when Overnight is off**, and **continuous when Overnight is holding this Mac awake**. The two states differ in shape rather than colour, and the glyph is a template image, so it follows a light or dark menu bar on its own.
 
 While it is on, the menu shows the deadline and offers **Update Deadline** and **Turn Off Now**. Both raise an administrator prompt, because changing power settings needs root and Overnight keeps no standing privilege.
 
@@ -126,15 +140,16 @@ This matters more than usual here, because the app changes system power behaviou
 | Exact restore | Pass. Battery profile byte-identical afterwards |
 | One-shot `launchd` deadline restore | Pass. Fired as uid 0, exit 0, replayed the captured value, removed itself |
 
-**Verified in CI** — `swift build`, `swift test`, `shellcheck`, the payload harness, and the DMG build all run on a macOS runner per push.
+**Verified in CI** — `swift build`, `swift test`, `shellcheck`, the payload harness, and the DMG build all run on a macOS runner per push. The bundle is also checked to carry the icon `Info.plist` names, and `iconutil` is asked to take that `.icns` apart again so a file macOS could not read fails the build.
 
-**Verified on Linux during development** — the payload harness (52 assertions covering argument validation, the directory precondition, transaction ordering, injection rejection, and restore idempotency) and the managed-key drift guard. These exercise the scripts' control flow against stubbed binaries. **They prove nothing about how macOS responds to `pmset`.**
+**Verified on Linux during development** — the payload harness (65 assertions covering argument validation, the directory precondition, transaction ordering, injection rejection, and restore idempotency), the managed-key drift guard, and `scripts/icons.py verify`, which re-derives every icon representation from the branding master. These exercise the scripts' control flow against stubbed binaries. **They prove nothing about how macOS responds to `pmset`.**
 
 **Not verified by anything yet:**
 
 - Closed-lid runs longer than 90 seconds, and thermals under sustained closed-lid load.
 - Actual AC loss while `disablesleep` is 1.
 - Whether `disablesleep` survives a reboot.
+- How the icons actually look. The `.icns` is checked structurally and the menu bar band's geometry is unit-tested, but no CI runner renders a Dock icon or a menu bar. [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) M8 covers the sizes, light and dark menu bars, Retina sharpness, and the VoiceOver label.
 - Whether `tcpkeepalive` scopes with `-c`. The spike machine already had it at 1 on both profiles, so a scoped write was indistinguishable from a global one. **Overnight therefore does not write `tcpkeepalive` at all.** It is still recorded in the capture. Nothing is lost: with `disablesleep 1` and `sleep 0` the machine never sleeps, and `tcpkeepalive` only governs behaviour during sleep.
 
 The 89-second lid test ran with an unrelated `caffeinate -i -t 300` held by another process. `caffeinate -i` prevents idle sleep and should not prevent clamshell sleep, so the result is treated as provisionally positive rather than settled. [docs/MANUAL-CHECKS.md](docs/MANUAL-CHECKS.md) has a standalone re-test to run before any release.

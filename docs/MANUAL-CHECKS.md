@@ -2,7 +2,7 @@
 
 Things no CI runner and no Linux host can answer. Run these on the actual MacBook.
 
-The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6 and M7 are the ones still outstanding before a release.**
+The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6, M7 and M8 are the ones still outstanding before a release.**
 
 Throughout: `pmset -g custom` shows the per-profile timers, `pmset -g | grep SleepDisabled` shows the global flag. Capture both before you start.
 
@@ -65,6 +65,29 @@ Then check both branches:
   ```
 
 **Pass:** the notification and prompt appear promptly on unplug, approving restores exactly, and dismissing leaves an honest warning plus an intact backstop.
+
+## M8. The icon renders — **outstanding**
+
+No CI runner and no Linux host can say how a menu bar glyph or a Dock icon actually looks. The .icns is checked structurally on CI and the band's geometry is unit-tested, but neither of those is a pair of eyes.
+
+**App icon.** With the app in `/Applications`:
+
+```sh
+# Finder should show the artwork at every step size, not a generic blank document.
+open -R /Applications/Overnight.app
+```
+
+Step the Finder icon size slider from 16pt to 512pt and confirm the band stays legible and the rounded rectangle sits at the same size as its neighbours rather than larger or smaller. Check Get Info and Spotlight too, since they read different representations out of the same .icns.
+
+**Menu bar glyph.** With Overnight off, then on:
+
+1. Confirm the off glyph is a curved band broken in the middle, and the on glyph is the same band continuous. They must be tellable apart in peripheral vision, without looking straight at them.
+2. Switch **System Settings → Appearance** between Light and Dark. The glyph must invert with the menu bar rather than staying one colour or disappearing.
+3. Click the item. The glyph must invert again against the highlighted background.
+4. On a Retina display, look closely for a soft or doubled edge. The band is stroked on demand, so it should be as sharp as the system's own menu bar glyphs.
+5. With VoiceOver on, focus the item and confirm it is announced as "Overnight is on" or "Overnight is off" rather than as an unlabelled image.
+
+**Pass:** artwork at every size, the two states distinguishable at a glance, correct inversion in light, dark and highlighted menu bars, no softness at 2x, and a spoken label that names the state.
 
 ---
 

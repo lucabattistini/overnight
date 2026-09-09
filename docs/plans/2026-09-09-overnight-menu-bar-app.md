@@ -276,8 +276,8 @@ U1 first. U2 and U3 are independent of each other and both feed U4 and U5. U4 mu
 
 - **Goal:** The menu-bar surface for all four states.
 - **Requirements:** R1, R2, R3, R5, R19, R22.
-- **Files:** `Sources/Overnight/OvernightApp.swift`, `Sources/Overnight/MenuContentView.swift`.
-- **Approach:** A `MenuBarExtra` scene with `.menuBarExtraStyle(.window)` so the deadline picker can be inline SwiftUI rather than a chain of nested menu items. The icon is an SF Symbol that differs between active and inactive. Turning on presents the time picker and offers a small set of one-tap presets alongside it; there is no path to enable without a resolved deadline (R3). While active, the panel shows the deadline and offers change-deadline, which re-runs the enable transaction — the restore script is idempotent and the enable script overwrites the job, so re-arming needs no special path. The active-with-missing-job state renders the two recovery actions from R19. The externally-disabled state renders text only.
+- **Files:** `Sources/Overnight/OvernightApp.swift`, `Sources/Overnight/MenuContentView.swift`, `Sources/Overnight/MenuBarIcon.swift`, `Sources/OvernightCore/MenuBarBand.swift`.
+- **Approach:** A `MenuBarExtra` scene with `.menuBarExtraStyle(.window)` so the deadline picker can be inline SwiftUI rather than a chain of nested menu items. **Shipped differently from the plan:** the glyph is not an SF Symbol. It is one curved band, drawn continuous when active and with a centred gap when inactive, so the two states differ in shape rather than in colour. `MenuBarBand` holds the geometry as a cubic Bézier in the library target, where it is unit-testable without a menu bar; `MenuBarIcon` strokes it into a template `NSImage` on demand, which is what keeps it crisp at 2x and lets AppKit invert it for a light, dark or highlighted menu bar. Turning on presents the time picker and offers a small set of one-tap presets alongside it; there is no path to enable without a resolved deadline (R3). While active, the panel shows the deadline and offers change-deadline, which re-runs the enable transaction — the restore script is idempotent and the enable script overwrites the job, so re-arming needs no special path. The active-with-missing-job state renders the two recovery actions from R19. The externally-disabled state renders text only.
 - **Test scenarios:** No automated tests; this is a view layer with the logic already covered by U3 and U5. Behavior is confirmed by manual check M5 in `docs/MANUAL-CHECKS.md`.
 - **Verification:** Compiles on CI. Visual behavior is deferred to hardware.
 
@@ -294,8 +294,8 @@ U1 first. U2 and U3 are independent of each other and both feed U4 and U5. U4 mu
 
 - **Goal:** One command produces `dist/Overnight.app`, and one more produces `dist/Overnight.dmg`.
 - **Requirements:** R23.
-- **Files:** `scripts/build-app.sh`, `scripts/make-dmg.sh`, `resources/Info.plist`.
-- **Approach:** `build-app.sh` runs `swift build -c release --arch arm64 --arch x86_64`, then assembles `Contents/MacOS/Overnight`, `Contents/Info.plist`, and `Contents/Resources/` containing both payload scripts. `Info.plist` sets `LSUIElement` true so the app is a menu-bar agent with no Dock icon (R1), `LSMinimumSystemVersion` 13.0, `CFBundleIdentifier` `dev.lucabattistini.overnight`, and a version the script substitutes from the git tag or a default. `make-dmg.sh` builds the app if needed and runs `hdiutil create -srcfolder dist/Overnight.app -volname Overnight -format UDZO`. Both scripts use `set -eu` and refuse to run outside a macOS host with a clear message, so a Linux contributor gets an explanation rather than a confusing failure.
+- **Files:** `scripts/build-app.sh`, `scripts/make-dmg.sh`, `scripts/icons.py`, `resources/Info.plist`.
+- **Approach:** `build-app.sh` runs `swift build -c release --arch arm64 --arch x86_64`, then assembles `Contents/MacOS/Overnight`, `Contents/Info.plist`, and `Contents/Resources/` containing both payload scripts and `Overnight.icns`, which `CFBundleIconFile` names. The .icns is a checked-in build product rather than a packaging step: `iconutil` and `sips` exist only on macOS, so generating it during packaging would make the icon depend on the build host. `scripts/icons.py` produces it from `resources/branding/OvernightIconMaster.png` using only the Python standard library, placing the artwork on Apple's 824-in-1024 grid. `Info.plist` sets `LSUIElement` true so the app is a menu-bar agent with no Dock icon (R1), `LSMinimumSystemVersion` 13.0, `CFBundleIdentifier` `dev.lucabattistini.overnight`, and a version the script substitutes from the git tag or a default. `make-dmg.sh` builds the app if needed and runs `hdiutil create -srcfolder dist/Overnight.app -volname Overnight -format UDZO`. Both scripts use `set -eu` and refuse to run outside a macOS host with a clear message, so a Linux contributor gets an explanation rather than a confusing failure.
 - **Test scenarios:** `sh -n` accepts both scripts. CI asserts the produced bundle contains both payload scripts and that `file dist/Overnight.app/Contents/MacOS/Overnight` reports both `arm64` and `x86_64` slices.
 - **Verification:** `./scripts/make-dmg.sh` on CI produces a non-empty DMG.
 
@@ -304,7 +304,7 @@ U1 first. U2 and U3 are independent of each other and both feed U4 and U5. U4 mu
 - **Goal:** Every push is built and tested on macOS, and every tag ships a DMG.
 - **Requirements:** R24, R26.
 - **Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
-- **Approach:** `ci.yml` runs on a `macos-14` runner: `swift build`, `swift test`, `shellcheck` over `payload/` and `scripts/`, the stubbed payload harness from U4, the managed-key drift grep from U4, and `plutil -lint` on `resources/Info.plist`. `release.yml` triggers on a `v*` tag, runs `make-dmg.sh`, and attaches the DMG to a GitHub Release with `gh release create`, using the default `GITHUB_TOKEN` and no stored secret.
+- **Approach:** `ci.yml` runs on a `macos-14` runner: `swift build`, `swift test`, `shellcheck` over `payload/` and `scripts/`, the stubbed payload harness from U4, the managed-key drift grep from U4, `plutil -lint` on `resources/Info.plist`, and `scripts/icons.py verify`, which re-derives every icon representation from the branding master and compares decoded pixels — not compressed bytes, since zlib output may differ between versions. `release.yml` triggers on a `v*` tag, runs `make-dmg.sh`, and attaches the DMG to a GitHub Release with `gh release create`, using the default `GITHUB_TOKEN` and no stored secret.
 - **Test scenarios:** The workflows are validated locally by parsing them as YAML. Their real execution is the first CI run.
 - **Verification:** The CI workflow is green on the initial push.
 
@@ -328,6 +328,7 @@ U1 first. U2 and U3 are independent of each other and both feed U4 and U5. U4 mu
 | Shell syntax | `sh -n payload/*.sh scripts/*.sh` | Linux and CI | U4, U8 |
 | Shell lint | `shellcheck payload/*.sh scripts/*.sh` | CI | U4, U8 |
 | Payload harness | `tests/payload/run.sh` with stubbed `pmset`, `launchctl`, `stat`, `install` | Linux and CI | U4 |
+| Icon assets match the master | `python3 scripts/icons.py verify` | Linux and CI | U6, U8 |
 | Managed-key drift | grep the same five keys in both payload scripts and `PMSetParser.swift` | Linux and CI | U2, U4 |
 | Property list lint | `plutil -lint resources/Info.plist` | CI | U8 |
 | Workflow syntax | `python3 -c 'import yaml,sys; yaml.safe_load(open(sys.argv[1]))'` | Linux | U9 |
