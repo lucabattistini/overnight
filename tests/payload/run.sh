@@ -195,6 +195,55 @@ else
 fi
 teardown
 
+# --- enable: changing the deadline must not recapture --------------------------------------
+echo "enable / deadline change"
+
+setup
+enable 9 10 7 30 1788000000 >/dev/null 2>&1
+ORIGINAL=$(cat "$WORK/support/state.conf")
+
+# Simulate the machine now reporting the overnight profile, which is what pmset would say
+# once the first enable has been applied.
+cat > "$OVERNIGHT_STUB_CUSTOM" <<'STUBEOF'
+Battery Power:
+ powernap             0
+ displaysleep         5
+ sleep                1
+ disksleep            10
+AC Power:
+ powernap             0
+ displaysleep         2
+ sleep                0
+ disksleep            0
+STUBEOF
+printf 'System-wide power settings:\n SleepDisabled\t\t1\n' > "$OVERNIGHT_STUB_LIVE"
+
+: > "$OVERNIGHT_TEST_LOG"
+enable 9 10 9 0 1788010000 >/dev/null 2>&1 || bad "second enable succeeded"
+UPDATED=$(cat "$WORK/support/state.conf")
+
+assert_contains "keeps the original AC sleep value"    "$UPDATED" "ac_sleep 30"
+assert_contains "keeps the original AC powernap value" "$UPDATED" "ac_powernap 1"
+assert_contains "keeps the original global flag"       "$UPDATED" "prior_sleep_disabled 0"
+assert_absent   "does not recapture the applied profile" "$UPDATED" "ac_sleep 0"
+assert_contains "moves the deadline"                   "$UPDATED" "deadline_epoch 1788010000"
+assert_absent   "drops the old deadline"               "$UPDATED" "deadline_epoch 1788000000"
+
+# The whole point: restore must still put the real settings back.
+: > "$OVERNIGHT_TEST_LOG"
+restore >/dev/null 2>&1 || bad "restore after a deadline change succeeded"
+assert_contains "restores the pre-Overnight values after a deadline change" \
+    "$(cat "$OVERNIGHT_TEST_LOG")" "pmset -c disksleep 10 displaysleep 10 powernap 1 sleep 30"
+teardown
+
+setup
+mkdir -p "$WORK/support"
+printf 'garbage\n' > "$WORK/support/state.conf"
+if enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    bad "refuses to build on an unreadable existing capture"
+else ok "refuses to build on an unreadable existing capture"; fi
+teardown
+
 # --- enable: an unusable capture must abort ------------------------------------------------
 echo "enable / unusable capture"
 

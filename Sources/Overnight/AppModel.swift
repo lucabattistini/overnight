@@ -20,10 +20,16 @@ final class AppModel: ObservableObject {
     private let monitor = PowerSourceMonitor()
     private var refreshTimer: Timer?
 
-    init() {
-        refresh()
-        startPeriodicRefresh()
-        requestNotificationPermission()
+    /// Nonisolated so `@StateObject private var model = AppModel()` in the `App` struct does
+    /// not have to be evaluated from a main-actor context. The actual startup work is hopped
+    /// onto the main actor explicitly.
+    nonisolated init() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.refresh()
+            self.startPeriodicRefresh()
+            self.requestNotificationPermission()
+        }
     }
 
     // MARK: - Status

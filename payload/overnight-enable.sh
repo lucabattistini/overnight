@@ -119,23 +119,38 @@ capture_sleep_disabled() {
     "$PMSET" -g | awk '$1 == "SleepDisabled" && NF == 2 && $2 ~ /^[01]$/ { print $2; exit }'
 }
 
-PROFILES=$(capture_profiles) || fail "could not parse 'pmset -g custom'"
-[ -n "$PROFILES" ] || fail "'pmset -g custom' reported none of the managed settings"
-PRIOR_SLEEP_DISABLED=$(capture_sleep_disabled || true)
+# Overnight may already be on: changing the deadline re-runs this script. In that case the
+# existing capture must be kept exactly as it is. Recapturing now would record the *overnight*
+# profile as the baseline -- sleep 0, disablesleep 1 -- and the real settings would be gone,
+# leaving restore with nothing to put back.
+if [ -f "$STATE_FILE" ]; then
+    [ -L "$STATE_FILE" ] && fail "$STATE_FILE is a symlink; refusing to use it"
+    grep -q '^version 1$' "$STATE_FILE" || fail "existing saved state is unreadable; run overnight-restore.sh first"
+    STATE_BODY=$(grep -v '^deadline_epoch ' "$STATE_FILE")
+    REUSED_CAPTURE=1
+else
+    PROFILES=$(capture_profiles) || fail "could not parse 'pmset -g custom'"
+    [ -n "$PROFILES" ] || fail "'pmset -g custom' reported none of the managed settings"
+    PRIOR_SLEEP_DISABLED=$(capture_sleep_disabled || true)
+    STATE_BODY=$(
+        echo "version 1"
+        if [ -n "$PRIOR_SLEEP_DISABLED" ]; then
+            echo "prior_sleep_disabled $PRIOR_SLEEP_DISABLED"
+        fi
+        echo "$PROFILES"
+    )
+    REUSED_CAPTURE=0
+fi
 
-# --- 3. Write the captured state atomically -----------------------------------------------
+# --- 3. Write the state atomically --------------------------------------------------------
 #
 # Written to a temporary file in the same directory and renamed into place, so a crash
 # mid-write cannot leave a half-parsed capture that restore would act on.
 TMP_STATE="$SUPPORT_DIR/.state.conf.$$"
 umask 022
 {
-    echo "version 1"
+    echo "$STATE_BODY"
     echo "deadline_epoch $DEADLINE_EPOCH"
-    if [ -n "$PRIOR_SLEEP_DISABLED" ]; then
-        echo "prior_sleep_disabled $PRIOR_SLEEP_DISABLED"
-    fi
-    echo "$PROFILES"
 } > "$TMP_STATE"
 chown root:wheel "$TMP_STATE"
 chmod 0644 "$TMP_STATE"
@@ -199,4 +214,7 @@ chmod 0644 "$PLIST"
 "$PMSET" -c $APPLY_ARGS
 "$PMSET" -a disablesleep 1
 
+if [ "$REUSED_CAPTURE" = "1" ]; then
+    echo "overnight-enable: kept the existing capture, deadline moved"
+fi
 echo "overnight-enable: active until $(printf '%02d-%02d %02d:%02d' "$MONTH" "$DAY" "$HOUR" "$MINUTE")"

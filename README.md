@@ -43,6 +43,8 @@ Click the moon. Pick a wake time. Click **Turn On** and approve the administrato
 
 While it is on, the menu shows the deadline and offers **Update Deadline** and **Turn Off Now**. Both raise an administrator prompt, because changing power settings needs root and Overnight keeps no standing privilege.
 
+Updating the deadline moves the wake time and re-arms the timer. It does **not** re-record your settings — the capture taken when you first turned Overnight on is kept, so the values restored at the end are always your real ones, however many times you extend.
+
 The menu-bar state is read from the machine, not remembered. Quit the app, relaunch it, or reboot, and it will still tell you whether sleep is actually disabled.
 
 ## The limitation you should know about
