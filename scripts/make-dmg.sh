@@ -7,7 +7,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 DIST="$ROOT/dist"
 APP="$DIST/Overnight.app"
 DMG="$DIST/Overnight.dmg"

@@ -60,16 +60,22 @@ require_number "$DAY" 2 "day"
 require_number "$HOUR" 2 "hour"
 require_number "$MINUTE" 2 "minute"
 require_number "$DEADLINE_EPOCH" 11 "deadline epoch"
-[ "$MONTH" -ge 1 ] && [ "$MONTH" -le 12 ] || fail "month out of range: $MONTH"
-[ "$DAY" -ge 1 ] && [ "$DAY" -le 31 ] || fail "day out of range: $DAY"
-[ "$HOUR" -le 23 ] || fail "hour out of range: $HOUR"
-[ "$MINUTE" -le 59 ] || fail "minute out of range: $MINUTE"
+require_range() {
+    if [ "$1" -lt "$2" ] || [ "$1" -gt "$3" ]; then
+        fail "$4 out of range: $1"
+    fi
+}
+
+require_range "$MONTH" 1 12 "month"
+require_range "$DAY" 1 31 "day"
+require_range "$HOUR" 0 23 "hour"
+require_range "$MINUTE" 0 59 "minute"
 
 [ "$(id -u)" = "0" ] || fail "must run as root"
 
 # The restore script ships beside this one inside the app bundle. Resolving it from $0 means
 # no path argument crosses the privilege boundary.
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 RESTORE_SRC="$SCRIPT_DIR/overnight-restore.sh"
 [ -f "$RESTORE_SRC" ] || fail "restore script not found next to this script"
 [ -L "$RESTORE_SRC" ] && fail "restore script is a symlink; refusing to install it"

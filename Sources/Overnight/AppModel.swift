@@ -20,16 +20,20 @@ final class AppModel: ObservableObject {
     private let monitor = PowerSourceMonitor()
     private var refreshTimer: Timer?
 
-    /// Nonisolated so `@StateObject private var model = AppModel()` in the `App` struct does
-    /// not have to be evaluated from a main-actor context. The actual startup work is hopped
-    /// onto the main actor explicitly.
-    nonisolated init() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.refresh()
-            self.startPeriodicRefresh()
-            self.requestNotificationPermission()
-        }
+    private var hasStarted = false
+
+    /// Nonisolated and empty so `@StateObject private var model = AppModel()` in the `App`
+    /// struct does not have to be evaluated from a main-actor context. Startup work happens in
+    /// `start()` instead: an initializer cannot capture `self` into a concurrent task.
+    nonisolated init() {}
+
+    /// Called when the menu first appears. Idempotent, because the menu appears many times.
+    func start() {
+        refresh()
+        guard !hasStarted else { return }
+        hasStarted = true
+        startPeriodicRefresh()
+        requestNotificationPermission()
     }
 
     // MARK: - Status

@@ -8,7 +8,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 DIST="$ROOT/dist"
 APP="$DIST/Overnight.app"
 VERSION="${OVERNIGHT_VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)}"

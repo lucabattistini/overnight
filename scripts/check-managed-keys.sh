@@ -9,7 +9,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 EXPECTED="disksleep displaysleep powernap sleep tcpkeepalive"
 
 swift_keys=$(sed -n '/^public enum ManagedSetting/,/^}/p' "$ROOT/Sources/OvernightCore/PowerCapture.swift" \

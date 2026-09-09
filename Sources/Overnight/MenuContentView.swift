@@ -58,7 +58,7 @@ struct MenuContentView: View {
         }
         .padding(14)
         .frame(width: 300)
-        .onAppear { model.refresh() }
+        .onAppear { model.start() }
         .disabled(model.isBusy)
     }
 
