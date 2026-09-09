@@ -37,6 +37,16 @@ cp "$ROOT/payload/overnight-enable.sh" "$APP/Contents/Resources/"
 cp "$ROOT/payload/overnight-restore.sh" "$APP/Contents/Resources/"
 chmod 0755 "$APP/Contents/Resources/overnight-enable.sh" "$APP/Contents/Resources/overnight-restore.sh"
 
+# The .icns is a checked-in build product, not something generated here: `iconutil` and `sips`
+# only exist on macOS, and an icon that is rebuilt during packaging is an icon that can differ
+# between machines. scripts/icons.py regenerates it from the branding master, and CI checks the
+# committed file still matches. CFBundleIconFile in Info.plist names this file.
+if [ ! -f "$ROOT/resources/Overnight.icns" ]; then
+    echo "resources/Overnight.icns is missing. Run 'python3 scripts/icons.py build'." >&2
+    exit 1
+fi
+cp "$ROOT/resources/Overnight.icns" "$APP/Contents/Resources/Overnight.icns"
+
 sed "s/__VERSION__/$VERSION/g" "$ROOT/resources/Info.plist" > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
