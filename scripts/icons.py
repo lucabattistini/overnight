@@ -67,19 +67,25 @@ SHADOW_RADIUS = 11
 SHADOW_OPACITY = 0.28
 
 # OSTypes as `iconutil` writes them for a full .iconset, in the same order. Each entry is
-# (OSType, pixel size). Several sizes appear twice because macOS addresses "32x32" and
-# "16x16@2x" separately even though they are the same bitmap.
+# (OSType, pixel size, payload format). Several sizes appear twice because macOS addresses
+# "32x32" and "16x16@2x" separately even though they are the same bitmap.
+#
+# The two smallest are the trap. `ic04` and `ic05` are not PNG slots: IconServices reads them
+# as ARGB, and handing them a PNG gets you noise on screen at 16pt and 32pt with every larger
+# size still perfect, because nothing else in the file is consulted at those sizes. The
+# lookalike OSTypes `icp4`/`icp5` do take PNG, but IconServices ignores them, so an .icns that
+# uses those renders the same noise. Only `ic04`/`ic05` in ARGB are read.
 ICNS_ENTRIES = [
-    ("icp4", 16),
-    ("icp5", 32),
-    ("ic11", 32),
-    ("ic12", 64),
-    ("ic07", 128),
-    ("ic13", 256),
-    ("ic08", 256),
-    ("ic14", 512),
-    ("ic09", 512),
-    ("ic10", 1024),
+    ("ic04", 16, "argb"),
+    ("ic05", 32, "argb"),
+    ("ic11", 32, "png"),
+    ("ic12", 64, "png"),
+    ("ic07", 128, "png"),
+    ("ic13", 256, "png"),
+    ("ic08", 256, "png"),
+    ("ic14", 512, "png"),
+    ("ic09", 512, "png"),
+    ("ic10", 1024, "png"),
 ]
 
 README_SIZE = 256
@@ -428,11 +434,103 @@ def centered_on_canvas(image, canvas):
 # --- ICNS -----------------------------------------------------------------------------------
 
 
+def _pack_runs(data):
+    """The run-length coding .icns uses inside its ARGB entries.
+
+    A control byte under 0x80 introduces that many plus one literal bytes; one at or above it
+    introduces a single byte repeated `control - 125` times, so runs cover 3 to 130. That
+    off-by-two against TIFF PackBits is the whole difference between the two schemes.
+    """
+    out = bytearray()
+    position = 0
+    length = len(data)
+    while position < length:
+        run = 1
+        while run < 130 and position + run < length and data[position + run] == data[position]:
+            run += 1
+        if run >= 3:
+            out.append(125 + run)
+            out.append(data[position])
+            position += run
+            continue
+        start = position
+        position += 1
+        while position < length and position - start < 128:
+            if (
+                position + 2 < length
+                and data[position] == data[position + 1] == data[position + 2]
+            ):
+                break
+            position += 1
+        out.append(position - start - 1)
+        out += data[start:position]
+    return bytes(out)
+
+
+def _unpack_runs(data, position, count):
+    out = bytearray()
+    while len(out) < count:
+        control = data[position]
+        position += 1
+        if control & 0x80:
+            out += bytes([data[position]]) * (control - 125)
+            position += 1
+        else:
+            out += data[position:position + control + 1]
+            position += control + 1
+    if len(out) != count:
+        raise ValueError("an ARGB plane's run-length stream overruns the plane")
+    return bytes(out), position
+
+
+def encode_argb(image):
+    """RGBA8 -> an .icns ARGB entry: the magic, then the A, R, G and B planes, run-coded.
+
+    Straight alpha, matching what `iconutil` writes: the colour under a transparent pixel is
+    kept rather than multiplied away.
+
+    Each plane is coded on its own and the four results are concatenated. Coding all four as
+    one stream decodes to identical bytes and is a little smaller, but macOS restarts the
+    decoder at every plane, so a literal or a run that straddles a boundary leaves it reading
+    pixel data as a control byte -- which is a scrambled icon at 16pt and 32pt only, and no
+    error anywhere.
+    """
+    pixels = image.pixels
+    count = image.width * image.height
+    body = b""
+    for offset in (3, 0, 1, 2):
+        body += _pack_runs(bytes(pixels[offset::4]))
+    if len(pixels) != count * 4:
+        raise ValueError("image size does not match its pixel buffer")
+    return b"ARGB" + body
+
+
+def decode_argb(data, size):
+    if data[:4] != b"ARGB":
+        raise ValueError("not an ARGB icon entry")
+    count = size * size
+    pixels = bytearray(count * 4)
+    position = 4
+    for offset in (3, 0, 1, 2):
+        plane, position = _unpack_runs(data, position, count)
+        pixels[offset::4] = plane
+    if position != len(data):
+        raise ValueError("ARGB entry has %d bytes left over" % (len(data) - position))
+    return Image(size, size, pixels)
+
+
 def _icns_entry(kind, payload):
     return kind.encode("ascii") + struct.pack(">I", len(payload) + 8) + payload
 
 
-def _icns_toc(png_by_size):
+def icns_payloads(image_by_size, png_by_size):
+    return [
+        (kind, png_by_size[size] if fmt == "png" else encode_argb(image_by_size[size]))
+        for kind, size, fmt in ICNS_ENTRIES
+    ]
+
+
+def _icns_toc(payloads):
     """The `TOC ` entry: every following entry's type and total length, in order.
 
     Optional as far as the format goes, but Apple's own .icns files and the ones `iconutil`
@@ -440,14 +538,15 @@ def _icns_toc(png_by_size):
     icon reader is best tested against.
     """
     return b"".join(
-        kind.encode("ascii") + struct.pack(">I", len(png_by_size[size]) + 8)
-        for kind, size in ICNS_ENTRIES
+        kind.encode("ascii") + struct.pack(">I", len(payload) + 8)
+        for kind, payload in payloads
     )
 
 
-def build_icns(png_by_size):
-    body = _icns_entry("TOC ", _icns_toc(png_by_size))
-    body += b"".join(_icns_entry(kind, png_by_size[size]) for kind, size in ICNS_ENTRIES)
+def build_icns(image_by_size, png_by_size):
+    payloads = icns_payloads(image_by_size, png_by_size)
+    body = _icns_entry("TOC ", _icns_toc(payloads))
+    body += b"".join(_icns_entry(kind, payload) for kind, payload in payloads)
     return b"icns" + struct.pack(">I", len(body) + 8) + body
 
 
@@ -1252,9 +1351,9 @@ def command_build():
     icon = {size: encode_png(image) for size, image in rendered["icon"].items()}
     volume = {size: encode_png(image) for size, image in rendered["volume"].items()}
 
-    _write(ICNS, build_icns(icon))
+    _write(ICNS, build_icns(rendered["icon"], icon))
     _write(README_ICON, icon[README_SIZE])
-    _write(VOLUME_ICNS, build_icns(volume))
+    _write(VOLUME_ICNS, build_icns(rendered["volume"], volume))
     _write(VOLUME_PREVIEW, volume[VOLUME_PREVIEW_SIZE])
     _write(DMG_BACKGROUND, encode_png(rendered["background"][1]))
     _write(DMG_BACKGROUND_2X, encode_png(rendered["background"][DMG_SCALE]))
@@ -1267,7 +1366,7 @@ def _check_icns(path, sizes, failures):
     with open(path, "rb") as handle:
         entries = parse_icns(handle.read())
 
-    expected = ["TOC "] + [kind for kind, _ in ICNS_ENTRIES]
+    expected = ["TOC "] + [kind for kind, _, _ in ICNS_ENTRIES]
     if [kind for kind, _ in entries] != expected:
         failures.append(
             "%s entries are %s, expected %s" % (name, [k for k, _ in entries], expected)
@@ -1275,8 +1374,8 @@ def _check_icns(path, sizes, failures):
         return
 
     images = entries[1:]
-    for (kind, size), (_, payload) in zip(ICNS_ENTRIES, images):
-        image = decode_png(payload)
+    for (kind, size, fmt), (_, payload) in zip(ICNS_ENTRIES, images):
+        image = decode_png(payload) if fmt == "png" else decode_argb(payload, size)
         if (image.width, image.height) != (size, size):
             failures.append(
                 "%s entry %s is %dx%d, expected %dx%d"
