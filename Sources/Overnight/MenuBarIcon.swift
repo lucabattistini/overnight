@@ -7,12 +7,16 @@ import OvernightCore
 /// highlighted state; nothing here picks a colour. They are also drawn on demand rather than
 /// rasterised once, which is what keeps the band crisp when the same 18pt item is composited
 /// at 2x on a Retina display.
+///
+/// The stroke is one constant width with round caps and joins. `MenuBarBand` says why: the
+/// artwork the glyph comes from tapers at its ends, and a tapered outline would have to be a
+/// filled shape rather than a stroked path for no gain at the size this is actually seen.
 enum MenuBarIcon {
 
-    /// Overnight is holding the machine awake: the band is continuous.
+    /// Overnight is holding the machine awake: the S is continuous.
     static let active = make(active: true)
 
-    /// Overnight is off: the same band, interrupted in the middle.
+    /// Overnight is off: the same S, interrupted at its inflection.
     static let inactive = make(active: false)
 
     static func image(active: Bool) -> NSImage {

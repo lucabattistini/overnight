@@ -2,7 +2,7 @@
 
 Things no CI runner and no Linux host can answer. Run these on the actual MacBook.
 
-The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6, M7 and M8 are the ones still outstanding before a release.**
+The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6, M7, M8 and M9 are the ones still outstanding before a release.**
 
 Throughout: `pmset -g custom` shows the per-profile timers, `pmset -g | grep SleepDisabled` shows the global flag. Capture both before you start.
 
@@ -68,7 +68,7 @@ Then check both branches:
 
 ## M8. The icon renders — **outstanding**
 
-No CI runner and no Linux host can say how a menu bar glyph or a Dock icon actually looks. The .icns is checked structurally on CI and the band's geometry is unit-tested, but neither of those is a pair of eyes.
+No CI runner and no Linux host can say how a menu bar glyph or a Dock icon actually looks. Both .icns files are checked structurally on CI and the band's geometry is unit-tested, but neither of those is a pair of eyes.
 
 **App icon.** With the app in `/Applications`:
 
@@ -81,13 +81,47 @@ Step the Finder icon size slider from 16pt to 512pt and confirm the band stays l
 
 **Menu bar glyph.** With Overnight off, then on:
 
-1. Confirm the off glyph is a curved band broken in the middle, and the on glyph is the same band continuous. They must be tellable apart in peripheral vision, without looking straight at them.
+1. Confirm the on glyph is one continuous S — low and nearly flat on the left, sweeping up through the middle, flat again on the right — and that the off glyph is the same S with the middle removed. They must be tellable apart in peripheral vision, without looking straight at them. If the on state reads as a plain diagonal slash rather than as a curve with a visible reversal in it, the geometry is wrong, not the rendering: `MenuBarBand.armAngleDegrees` and `armReach` in `Sources/OvernightCore/MenuBarBand.swift` are the two numbers that control it.
 2. Switch **System Settings → Appearance** between Light and Dark. The glyph must invert with the menu bar rather than staying one colour or disappearing.
 3. Click the item. The glyph must invert again against the highlighted background.
 4. On a Retina display, look closely for a soft or doubled edge. The band is stroked on demand, so it should be as sharp as the system's own menu bar glyphs.
 5. With VoiceOver on, focus the item and confirm it is announced as "Overnight is on" or "Overnight is off" rather than as an unlabelled image.
 
 **Pass:** artwork at every size, the two states distinguishable at a glance, correct inversion in light, dark and highlighted menu bars, no softness at 2x, and a spoken label that names the state.
+
+## M9. The installer window renders — **outstanding**
+
+CI mounts the finished DMG and proves Finder wrote a layout into it. It cannot prove the layout is a *good* one: no runner has a screen. Build one and look at it.
+
+```sh
+sh scripts/make-dmg.sh
+open dist/Overnight.dmg
+```
+
+**The window.**
+
+1. It opens by itself at roughly 600×400 points, with **no toolbar and no status bar and no sidebar**. If any of those are showing, the AppleScript did not fully apply.
+2. Overnight sits on the left, an arrow points right from the middle of the window, and the `Applications` alias sits on the right. The arrow's shaft must line up with the horizontal centres of both icons rather than running above or below them. Each icon should sit inside the soft circular plate painted behind it — if either is noticeably high or low on its plate, Finder is anchoring `position` somewhere other than the icon's centre, and `DMG_APP_Y` / `DMG_APPLICATIONS_Y` in `resources/branding/dmg-layout.env` need adjusting by that offset. Re-run `python3 scripts/icons.py build` afterwards so the artwork follows.
+3. Resize nothing and drag nothing. Eject, mount again, and confirm the window comes back the same. A layout that only survives the first mount means the `.DS_Store` was not flushed before the image was detached.
+
+**The labels — do this in both appearances.** Switch **System Settings → Appearance** between Light and Dark with the DMG mounted.
+
+Finder takes the icon labels' colour from the system appearance, not from the background behind them, so "Overnight" and "Applications" are drawn in dark text in Light Mode over a deliberately dark background. The plates behind the icons are the local contrast that hedges this.
+
+**If the labels are unreadable in Light Mode**, that is the thing to fix, and the knob is in `render_dmg_background` in `scripts/icons.py`: raise the well plate's amplitude, currently `0.13`, and its rim, currently `0.06`. Rebuild with `python3 scripts/icons.py build` and repackage.
+
+**The volume icon.**
+
+4. The mounted volume must show the Overnight platter — a dark disc with the band of light across it and a spindle in the middle — in the Finder sidebar, on the desktop if you show mounted disks there, and in the DMG window's own title bar. A generic white external-disk icon means the `kHasCustomIcon` flag did not take.
+5. Check it at the sidebar's small size specifically. That is 16pt, and it is the size the icon is seen at most.
+
+**Retina.** On a Retina display, look closely at the background's star field and at the edge of the arrow. Both should be crisp. Softness means `tiffutil` did not pair the 1x and 2x backgrounds and the packaging step fell back to the 1x PNG — it prints a warning when it does, so check the build output.
+
+**The install itself.**
+
+6. Drag Overnight to Applications from inside the window and confirm it lands in `/Applications`.
+
+**Pass:** a toolbar-free window at the designed size, both icons seated on their plates with the arrow between them, labels readable in both Light and Dark, the branded volume icon in the sidebar at 16pt, a crisp background at 2x, and a drag that installs.
 
 ---
 

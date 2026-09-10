@@ -25,16 +25,23 @@ jobs:
       - name: Managed-key drift
         run: sh scripts/check-managed-keys.sh
 
+      # The installer window's geometry is shared between a shell script and a Python script.
+      # Nothing at runtime makes them agree, and the symptom of them not agreeing is an arrow
+      # pointing at empty space in a DMG that has already shipped.
+      - name: Installer window layout drift
+        run: sh scripts/check-dmg-layout.sh
+
       - name: Payload harness
         run: sh tests/payload/run.sh
 
       - name: Icon script syntax
         run: python3 -m py_compile scripts/icons.py
 
-      # The .icns is committed rather than built during packaging, so this is what stops it
-      # drifting from the branding master. It compares decoded pixels, not compressed bytes,
-      # because zlib's output is allowed to differ between versions.
-      - name: Icon assets match the branding master
+      # The app icon, the volume icon and the installer background are all committed rather
+      # than built during packaging, so this is what stops them drifting from the branding
+      # master. It compares decoded pixels, not compressed bytes, because zlib's output is
+      # allowed to differ between versions.
+      - name: Branding assets match the branding master
         run: python3 scripts/icons.py verify
 
   macos:
@@ -81,6 +88,42 @@ jobs:
 
       - name: Package the DMG
         run: sh scripts/make-dmg.sh
+
+      # A DMG that builds is not a DMG that installs well. None of this can run off macOS, and
+      # none of it proves the window *looks* right — docs/MANUAL-CHECKS.md M9 is where a pair
+      # of eyes comes in — but it does prove Finder was actually asked and actually answered.
+      - name: The DMG must carry the installer window
+        run: |
+          set -eu
+          VOLUME="$RUNNER_TEMP/OvernightDMG"
+          mkdir -p "$VOLUME"
+          hdiutil attach dist/Overnight.dmg \
+            -readonly -noverify -noautoopen -mountpoint "$VOLUME" >/dev/null
+          trap 'hdiutil detach "$VOLUME" -force >/dev/null 2>&1 || true' EXIT
+
+          test -d "$VOLUME/Overnight.app"
+          test -L "$VOLUME/Applications"
+          test -f "$VOLUME/.VolumeIcon.icns"
+          ls "$VOLUME/.background" | grep -qE '^background\.(tiff|png)$'
+
+          # The volume icon is written by the same Python that writes the app icon, so put it
+          # through the same reader macOS uses rather than trusting the file test above.
+          iconutil --convert iconset \
+            --output "$RUNNER_TEMP/VolumeIcon.iconset" "$VOLUME/.VolumeIcon.icns"
+          test -f "$RUNNER_TEMP/VolumeIcon.iconset/icon_512x512@2x.png"
+
+          # .VolumeIcon.icns is inert unless the volume root carries kHasCustomIcon.
+          flags=$(xattr -px com.apple.FinderInfo "$VOLUME" | tr -d ' \n' | cut -c17-20)
+          test "$flags" = "0400" || { echo "Finder flags are $flags, expected 0400" >&2; exit 1; }
+
+          # If the AppleScript had silently done nothing, everything above would still pass.
+          # These two four-character record types are what Finder writes into .DS_Store for
+          # icon view options and for a hand-placed icon.
+          test -f "$VOLUME/.DS_Store"
+          LC_ALL=C grep -q icvp "$VOLUME/.DS_Store" \
+            || { echo ".DS_Store has no icon view options; the layout did not stick" >&2; exit 1; }
+          LC_ALL=C grep -q Iloc "$VOLUME/.DS_Store" \
+            || { echo ".DS_Store has no icon positions; the layout did not stick" >&2; exit 1; }
 
       - name: Payload harness on macOS
         run: sh tests/payload/run.sh
