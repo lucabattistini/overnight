@@ -157,7 +157,6 @@ rm -f "$SCRATCH" "$DMG"
 mkdir -p "$STAGE/.background"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-cp "$VOLUME_ICON" "$STAGE/.VolumeIcon.icns"
 
 # Finder reads a background at its natural size in points, so a 1x PNG on a Retina display is a
 # soft one. tiffutil pairs the two committed PNGs into a single TIFF with 72dpi and 144dpi
@@ -195,18 +194,6 @@ hdiutil attach "$SCRATCH" \
     -noautoopen \
     -mountpoint "$MOUNTPOINT" >/dev/null
 MOUNT="$MOUNTPOINT"
-
-# The .icns on the volume does nothing until the volume's root is flagged as having a custom
-# icon. SetFile is the documented way and ships with the Xcode command line tools, which this
-# machine already has because build-app.sh needed a Swift toolchain; xattr is the fallback for
-# the case where it does not, writing the same Finder info by hand.
-if ! SetFile -a C "$MOUNT" 2>/dev/null; then
-    if ! xattr -wx com.apple.FinderInfo "$FINDER_INFO_CUSTOM_ICON" "$MOUNT" 2>/dev/null; then
-        echo "make-dmg.sh: could not flag $MOUNT as having a custom icon." >&2
-        echo "Neither 'SetFile -a C' nor 'xattr -wx com.apple.FinderInfo' worked." >&2
-        exit 1
-    fi
-fi
 
 layout_window() {
     # Finder is the only thing that writes a .DS_Store macOS will read back, so the window is
@@ -273,6 +260,31 @@ done
 # worth failing over now rather than after it has shipped.
 [ -f "$MOUNT/.DS_Store" ] || {
     echo "make-dmg.sh: Finder accepted the layout but wrote no .DS_Store to $MOUNT." >&2
+    exit 1
+}
+
+# --- Volume icon, after Finder is done with the volume ---------------------------------------
+#
+# Finder deletes .VolumeIcon.icns from a volume it has been asked to open: it takes the file as
+# the icon and then owns it. Staging the icon into the image and flagging the volume before the
+# layout therefore produced a DMG with no icon file left on it, so both happen here instead,
+# once Finder has written the layout and has nothing further to do.
+cp "$VOLUME_ICON" "$MOUNT/.VolumeIcon.icns"
+
+# The .icns on the volume does nothing until the volume's root is flagged as having a custom
+# icon. SetFile is the documented way and ships with the Xcode command line tools, which this
+# machine already has because build-app.sh needed a Swift toolchain; xattr is the fallback for
+# the case where it does not, writing the same Finder info by hand.
+if ! SetFile -a C "$MOUNT" 2>/dev/null; then
+    if ! xattr -wx com.apple.FinderInfo "$FINDER_INFO_CUSTOM_ICON" "$MOUNT" 2>/dev/null; then
+        echo "make-dmg.sh: could not flag $MOUNT as having a custom icon." >&2
+        echo "Neither 'SetFile -a C' nor 'xattr -wx com.apple.FinderInfo' worked." >&2
+        exit 1
+    fi
+fi
+
+[ -f "$MOUNT/.VolumeIcon.icns" ] || {
+    echo "make-dmg.sh: the volume icon did not survive on $MOUNT." >&2
     exit 1
 }
 
