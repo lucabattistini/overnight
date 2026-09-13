@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let menu = NSMenu()
     private var isMenuOpen = false
     private var lastRefresh = Date.distantPast
+    private let customTime = CustomTimeWindowController()
 
     nonisolated override init() { super.init() }
 
@@ -111,5 +112,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pasteboard.setString(OvernightPaths.recoveryCommand, forType: .string)
     }
 
-    private func presentCustomTime() {}
+    private func presentCustomTime() {
+        customTime.present { [weak self] hour, minute in
+            guard let self else { return }
+            // R13: act on the state the machine is in now, not the one the window opened
+            // against. canEnable, not isActive -- Custom... is offered while Overnight is off,
+            // and confirming from off is meant to turn it on.
+            self.model.refresh()
+            guard self.model.status.canEnable else { return }
+            self.model.enable(hour: hour, minute: minute)
+        }
+    }
 }
