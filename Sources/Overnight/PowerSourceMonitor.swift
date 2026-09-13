@@ -19,6 +19,8 @@ final class PowerSourceMonitor {
     }
 
     private var runLoopSource: CFRunLoopSource?
+
+    var isWatching: Bool { runLoopSource != nil }
     private var onChange: ((Source) -> Void)?
     private var lastSource: Source = .unknown
 

@@ -77,5 +77,9 @@ public struct Deadline: Equatable, Sendable {
     public var epochSeconds: Int { Int(date.timeIntervalSince1970) }
 
     /// `07:30`, for display.
-    public var shortLabel: String { String(format: "%02d:%02d", hour, minute) }
+    public var shortLabel: String { Self.label(hour: hour, minute: minute) }
+
+    public static func label(hour: Int, minute: Int) -> String {
+        String(format: "%02d:%02d", hour, minute)
+    }
 }

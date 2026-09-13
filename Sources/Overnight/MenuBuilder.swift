@@ -53,24 +53,26 @@ enum MenuBuilder {
         return menuItem
     }
 
-    private static func monospacedDigits(_ title: String) -> NSAttributedString {
-        let size = NSFont.systemFontSize
-        return NSAttributedString(
-            string: title,
-            attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)]
+    private static let monospacedDigitFont =
+        NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+
+    private static let warningImage: NSImage? = {
+        let image = NSImage(
+            systemSymbolName: "exclamationmark.triangle.fill",
+            accessibilityDescription: "Warning"
         )
+        image?.isTemplate = true
+        return image
+    }()
+
+    private static func monospacedDigits(_ title: String) -> NSAttributedString {
+        NSAttributedString(string: title, attributes: [.font: monospacedDigitFont])
     }
 
     private static func image(for symbol: MenuPresentation.Symbol?) -> NSImage? {
         guard let symbol else { return nil }
         switch symbol {
-        case .warning:
-            let image = NSImage(
-                systemSymbolName: "exclamationmark.triangle.fill",
-                accessibilityDescription: "Warning"
-            )
-            image?.isTemplate = true
-            return image
+        case .warning: return warningImage
         }
     }
 }

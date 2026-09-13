@@ -3,7 +3,7 @@ import SwiftUI
 import OvernightCore
 
 @MainActor
-final class CustomTimeWindowController {
+final class CustomTimeWindowController: NSObject, NSWindowDelegate {
 
     private static let storageKey = "customWakeMinutes"
     private static let fallbackMinutes = 7 * 60 + 30
@@ -14,8 +14,9 @@ final class CustomTimeWindowController {
     /// reach Deadline and the privileged argument path.
     static var storedMinutes: Int {
         let defaults = UserDefaults.standard
-        guard defaults.object(forKey: storageKey) != nil else { return fallbackMinutes }
-        let stored = defaults.integer(forKey: storageKey)
+        // as? Int, not integer(forKey:): the latter coerces a corrupt string to 0, and 0 is a
+        // valid 00:00, so the range check below would pass it through as midnight.
+        guard let stored = defaults.object(forKey: storageKey) as? Int else { return fallbackMinutes }
         // Deadline owns the hour and minute range rule; asking it is what keeps this from
         // becoming a second home for the same invariant.
         guard (try? Deadline(minutesSinceMidnight: stored)) != nil else { return fallbackMinutes }
@@ -46,6 +47,7 @@ final class CustomTimeWindowController {
             defer: false
         )
         created.title = "Wake Time"
+        created.delegate = self
         created.contentView = hosting
         created.isReleasedWhenClosed = false
         created.center()
@@ -55,6 +57,12 @@ final class CustomTimeWindowController {
 
     func close() {
         window?.close()
+        window = nil
+    }
+
+    // The titlebar close button never reaches close(), which left a stale reference and reused
+    // the old view -- and its unconfirmed value -- on the next open.
+    func windowWillClose(_ notification: Notification) {
         window = nil
     }
 

@@ -3,32 +3,10 @@ import XCTest
 
 final class MenuPresentationTests: XCTestCase {
 
-    /// Fixed calendar so these assertions do not depend on the machine's time zone, the same
-    /// reason DeadlineTests pins one.
-    private let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
-        return calendar
-    }()
+    private let calendar = Fixtures.romeCalendar
 
     private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        components.hour = hour
-        components.minute = minute
-        components.second = 0
-        return calendar.date(from: components)!
-    }
-
-    private func capture(deadline: Date?) -> PowerCapture {
-        PowerCapture(
-            ac: [.sleep: 30],
-            battery: [.sleep: 1],
-            priorSleepDisabled: false,
-            deadlineEpoch: deadline.map { Int($0.timeIntervalSince1970) }
-        )
+        Fixtures.date(year, month, day, hour, minute)
     }
 
     private func present(
@@ -235,6 +213,39 @@ final class MenuPresentationTests: XCTestCase {
             XCTAssertFalse(item.isEnabled, "\(item.title) must not accept a pick while busy")
         }
         XCTAssertFalse(menu.containsAction { $0.isPrivileged && $0 != .turnOff })
+    }
+
+    func testBusyDisablesTheCleanupActionToo() {
+        let menu = present(.offWithStaleState, isBusy: true)
+        let cleanup = menu.item(withAction: .cleanUpStaleState)
+        XCTAssertNotNil(cleanup)
+        XCTAssertFalse(cleanup?.isEnabled ?? true)
+    }
+
+    func testNoTwoSeparatorsEverTouch() {
+        // A busy, inactive menu emitted an empty section between two separators.
+        let deadline = date(2026, 9, 13, 7, 30)
+        let statuses: [OvernightStatus] = [
+            .off, .offWithStaleState, .active(deadline: deadline),
+            .activeTimerMissing(deadline: deadline), .externallyDisabled,
+        ]
+        for status in statuses {
+            for onBattery in [false, true] {
+                for error in [nil, "boom"] {
+                    for isBusy in [false, true] {
+                        let items = present(status, onBattery: onBattery, lastError: error, isBusy: isBusy).items
+                        for (first, second) in zip(items, items.dropFirst()) {
+                            XCTAssertFalse(
+                                first.isSeparator && second.isSeparator,
+                                "\(status) onBattery=\(onBattery) error=\(error != nil) busy=\(isBusy) has touching separators"
+                            )
+                        }
+                        XCTAssertFalse(items.first?.isSeparator ?? true)
+                        XCTAssertFalse(items.last?.isSeparator ?? true)
+                    }
+                }
+            }
+        }
     }
 
     func testBusyLeavesRefreshAndQuitReachable() {

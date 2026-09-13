@@ -56,6 +56,9 @@ final class AppModel {
         let capture = readCapture()
         let jobInstalled = FileManager.default.fileExists(atPath: OvernightPaths.launchDaemonPlist)
 
+        let wasActive = status.isActive
+        let previousStatus = status
+        let previousOnBattery = onBatteryWhileActive
         status = OvernightStatus.derive(
             sleepDisabled: sleepDisabled,
             capture: capture,
@@ -63,13 +66,23 @@ final class AppModel {
         )
 
         if status.isActive {
-            startWatchingPower()
+            onBatteryWhileActive = PowerSourceMonitor.currentSource() == .battery
+            // Only on the transition. PowerSourceMonitor.start tears the IOKit source down and
+            // rebuilds it, and refresh() runs on every menu open and every timer tick -- so
+            // re-arming here would leave a window, thirty seconds apart, where an unplug
+            // notification lands on no source at all.
+            if !wasActive || !monitor.isWatching { startWatchingPower() }
         } else {
             stopWatchingPower()
             onBatteryWhileActive = false
         }
 
-        onChange?()
+        // Only on an actual move. The timer runs in .common mode, so it fires while a menu is
+        // tracking, and an unconditional notification here cancels that tracking -- closing an
+        // open menu under the user every thirty seconds with nothing changed.
+        if status != previousStatus || onBatteryWhileActive != previousOnBattery {
+            onChange?()
+        }
     }
 
     private func readSleepDisabled() -> Bool? {
@@ -105,16 +118,18 @@ final class AppModel {
     // MARK: - Actions
 
     func enable(hour: Int, minute: Int) {
+        refresh()
+        // The menu is a snapshot. Something else can disable sleep between the rebuild and the
+        // pick, and enabling then records that foreign flag as Overnight's own baseline.
+        guard status.canEnable else {
+            lastError = "Sleep is disabled, but not by Overnight, so it has no saved settings to restore. Overnight will not change anything."
+            onChange?()
+            return
+        }
         perform(expecting: .active) {
             let deadline = try Deadline(hour: hour, minute: minute)
             try PrivilegedRunner.run(.enable(deadline))
         }
-    }
-
-    /// Changing the deadline re-runs the same enable transaction. The restore is idempotent and
-    /// enable overwrites the job, so extending needs no separate code path.
-    func changeDeadline(hour: Int, minute: Int) {
-        enable(hour: hour, minute: minute)
     }
 
     func disable() {
@@ -179,7 +194,6 @@ final class AppModel {
     // MARK: - AC watching
 
     private func startWatchingPower() {
-        onBatteryWhileActive = PowerSourceMonitor.currentSource() == .battery
         monitor.start { [weak self] source in
             Task { @MainActor in self?.handlePowerSourceChange(source) }
         }

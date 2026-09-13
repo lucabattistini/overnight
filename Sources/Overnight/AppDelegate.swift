@@ -8,7 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let menu = NSMenu()
     private var isMenuOpen = false
-    private var lastRefresh = Date.distantPast
+    private var needsRefreshOnOpen = true
     private let customTime = CustomTimeWindowController()
 
     nonisolated override init() { super.init() }
@@ -49,9 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // refresh() forks `pmset -g` and blocks, so it must not run more than once per open.
-        if Date().timeIntervalSince(lastRefresh) > 0.5 {
-            lastRefresh = Date()
+        // Once per open session, not once per half-second: a reopen inside the old window
+        // skipped the refresh entirely and rebuilt the menu from the previous status.
+        if needsRefreshOnOpen {
+            needsRefreshOnOpen = false
             model.refresh()
         }
         MenuBuilder.apply(presentation(), to: menu, target: self, action: #selector(pick(_:)))
@@ -64,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         isMenuOpen = false
+        needsRefreshOnOpen = true
     }
 
     /// Nothing in the status menu has a key equivalent, so AppKit never needs to build it to
@@ -114,13 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func presentCustomTime() {
         customTime.present { [weak self] hour, minute in
-            guard let self else { return }
-            // R13: act on the state the machine is in now, not the one the window opened
-            // against. canEnable, not isActive -- Custom... is offered while Overnight is off,
-            // and confirming from off is meant to turn it on.
-            self.model.refresh()
-            guard self.model.status.canEnable else { return }
-            self.model.enable(hour: hour, minute: minute)
+            self?.model.enable(hour: hour, minute: minute)
         }
     }
 }

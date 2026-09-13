@@ -3,22 +3,10 @@ import XCTest
 
 final class DeadlineTests: XCTestCase {
 
-    /// Fixed calendar so these assertions do not depend on the machine's time zone.
-    private var calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
-        return calendar
-    }()
+    private let calendar = Fixtures.romeCalendar
 
     private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        components.hour = hour
-        components.minute = minute
-        components.second = 0
-        return calendar.date(from: components)!
+        Fixtures.date(year, month, day, hour, minute)
     }
 
     func testLateNightTimeResolvesToTomorrow() throws {
@@ -106,9 +94,10 @@ final class DeadlineTests: XCTestCase {
     func testMinutesSinceMidnightRejectsAnOutOfRangeValue() {
         // The stored value comes from UserDefaults, so a poisoned value must not reach the
         // privileged argument path. It throws Deadline's own typed error, not a new one.
-        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: 1440, now: Date(), calendar: calendar)) { error in
+        let now = date(2026, 9, 13, 0, 1)
+        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: 1440, now: now, calendar: calendar)) { error in
             XCTAssertEqual(error as? Deadline.DeadlineError, .hourOutOfRange(24))
         }
-        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: -1, now: Date(), calendar: calendar))
+        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: -1, now: now, calendar: calendar))
     }
 }

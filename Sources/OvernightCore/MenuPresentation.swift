@@ -90,19 +90,22 @@ public struct MenuPresentation: Equatable, Sendable {
             items.append(.separator())
             items.append(warning)
         }
-        items.append(.separator())
-
-        if status.canEnable && !isBusy {
-            items.append(.submenu(wakeAtTitle, wakeAtItems(status: status, presets: presets, calendar: calendar)))
+        var actions: [Item] = []
+        if status.canEnable && allows(.chooseCustomTime, isBusy: isBusy) {
+            actions.append(.submenu(wakeAtTitle, wakeAtItems(status: status, presets: presets, calendar: calendar)))
         }
         if status.isActive {
-            items.append(.action(turnOffTitle, .turnOff, enabled: !isBusy))
+            actions.append(.action(turnOffTitle, .turnOff, enabled: allows(.turnOff, isBusy: isBusy)))
         }
         if case .offWithStaleState = status {
-            items.append(.action(cleanUpTitle, .cleanUpStaleState, enabled: !isBusy))
+            actions.append(.action(cleanUpTitle, .cleanUpStaleState, enabled: allows(.cleanUpStaleState, isBusy: isBusy)))
         }
         if case .externallyDisabled = status {
-            items.append(.action(copyCommandTitle, .copyRecoveryCommand, tooltip: OvernightPaths.recoveryCommand))
+            actions.append(.action(copyCommandTitle, .copyRecoveryCommand, tooltip: OvernightPaths.recoveryCommand))
+        }
+        if !actions.isEmpty {
+            items.append(.separator())
+            items.append(contentsOf: actions)
         }
 
         items.append(.separator())
@@ -110,6 +113,10 @@ public struct MenuPresentation: Equatable, Sendable {
         items.append(.action(quitTitle, .quit))
 
         return MenuPresentation(items: items)
+    }
+
+    private static func allows(_ action: Action, isBusy: Bool) -> Bool {
+        !(isBusy && action.isPrivileged)
     }
 
     private static func wakeAtItems(status: OvernightStatus, presets: [Int], calendar: Calendar) -> [Item] {
@@ -134,7 +141,7 @@ public struct MenuPresentation: Equatable, Sendable {
     }
 
     private static func label(forMinutesOfDay minutes: Int) -> String {
-        String(format: "%02d:%02d", minutes / 60, minutes % 60)
+        Deadline.label(hour: minutes / 60, minute: minutes % 60)
     }
 
     private static func warning(status: OvernightStatus, onBatteryWhileActive: Bool, lastError: String?) -> Item? {

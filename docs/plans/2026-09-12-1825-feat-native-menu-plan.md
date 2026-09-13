@@ -106,7 +106,7 @@ Meanwhile the one fact a user opens the panel to learn, the deadline, is rendere
 - AE5. **Covers R6, R9, R14.** Given Overnight is active and the Mac is on battery, when the user opens the menu, then the item below the state item is a disabled warning and `Turn Off Now` is the first actionable item.
 - AE6. **Covers R15.** Given the status is `externallyDisabled`, when the user opens the menu, then no `Wake at` submenu is present and no item can call enable.
 - AE7. **Covers R3.** Given Overnight is active with an unknown deadline, when the user opens the `Wake at` submenu, then no item carries a check mark.
-- AE8. **Covers R18.** Given a privileged operation is in flight, when the user opens the menu, then the state item says so and `Turn Off Now`, `Wake at` and the cleanup item are all disabled.
+- AE8. **Covers R18.** Given a privileged operation is in flight, when the user opens the menu, then the state item says so, `Wake at` is absent entirely, and `Turn Off Now` and the cleanup item are present but disabled.
 - AE9. **Covers R14.** Given Overnight is active, the Mac is on battery, and the last operation failed, when the user opens the menu, then exactly one warning item is shown and it is the failed-operation one.
 
 ### Success Criteria
