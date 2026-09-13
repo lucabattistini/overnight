@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import UserNotifications
 import OvernightCore
 
@@ -9,30 +8,43 @@ import OvernightCore
 /// remembers what it did and reports that back: after a crash, a relaunch, or a restore that
 /// happened while the app was closed, the menu bar shows what the machine actually reports.
 @MainActor
-final class AppModel: ObservableObject {
-    @Published private(set) var status: OvernightStatus = .off
-    @Published private(set) var isBusy = false
-    @Published private(set) var lastError: String?
+final class AppModel {
+    private(set) var status: OvernightStatus = .off
+    private(set) var isBusy = false
+    private(set) var lastError: String?
     /// Set when the machine left AC while Overnight was active and the restore has not
     /// completed yet. Drives the warning in the menu.
-    @Published private(set) var onBatteryWhileActive = false
+    private(set) var onBatteryWhileActive = false
+
+    /// Called whenever any of the four properties above settles. The menu-bar glyph follows
+    /// status through this, so it keeps up with a restore that happens while no menu is open.
+    var onChange: (() -> Void)?
 
     private let monitor = PowerSourceMonitor()
     private var refreshTimer: Timer?
 
     private var hasStarted = false
+    private var hasRequestedNotifications = false
 
-    /// Nonisolated and empty so `@StateObject private var model = AppModel()` in the `App`
-    /// struct does not have to be evaluated from a main-actor context. Startup work happens in
-    /// `start()` instead: an initializer cannot capture `self` into a concurrent task.
+    /// Nonisolated and empty so `AppDelegate` -- itself constructed from `main.swift`, which
+    /// is nonisolated top-level code -- can hold one as a stored property. Startup work happens
+    /// in `start()` instead: an initializer cannot capture `self` into a concurrent task.
     nonisolated init() {}
 
-    /// Called when the menu first appears. Idempotent, because the menu appears many times.
+    /// Called once, at launch. Arming the AC watcher cannot wait for the user to open the menu:
+    /// an unplug while Overnight is active is what the watcher exists to catch.
     func start() {
         refresh()
         guard !hasStarted else { return }
         hasStarted = true
         startPeriodicRefresh()
+    }
+
+    /// Deferred out of `start()` so a window-less, Dock-less app does not raise a system
+    /// permission dialog the first time it launches, before the user has touched anything.
+    func prepareNotifications() {
+        guard !hasRequestedNotifications else { return }
+        hasRequestedNotifications = true
         requestNotificationPermission()
     }
 
@@ -56,6 +68,8 @@ final class AppModel: ObservableObject {
             stopWatchingPower()
             onBatteryWhileActive = false
         }
+
+        onChange?()
     }
 
     private func readSleepDisabled() -> Bool? {
@@ -76,12 +90,16 @@ final class AppModel: ObservableObject {
     private func startPeriodicRefresh() {
         // The deadline job can restore while the app is idle, and the menu should not keep
         // claiming Overnight is on for minutes afterwards.
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // .common rather than .default: menu tracking runs in NSEventTrackingRunLoopMode, and a
+        // timer scheduled only in .default stops firing for as long as a menu is open.
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             // Bound immutably before the hop: a `[weak self]` capture is a var, and a var
             // cannot be referenced from concurrently-executing code.
             guard let model = self else { return }
             Task { @MainActor in model.refresh() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
     }
 
     // MARK: - Actions
@@ -117,6 +135,7 @@ final class AppModel: ObservableObject {
         guard !isBusy else { return }
         isBusy = true
         lastError = nil
+        onChange?()
 
         Task {
             let outcome: String? = await Task.detached(priority: .userInitiated) { () -> String? in
@@ -139,6 +158,7 @@ final class AppModel: ObservableObject {
             }
             self.refresh()
             if !cancelled { self.reportMismatch(expectation) }
+            self.onChange?()
         }
     }
 
@@ -178,10 +198,12 @@ final class AppModel: ObservableObject {
         guard status.isActive else { return }
         guard source == .battery else {
             onBatteryWhileActive = false
+            onChange?()
             return
         }
 
         onBatteryWhileActive = true
+        onChange?()
         notifyUnplugged()
         disable()
     }
