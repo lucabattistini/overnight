@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import UserNotifications
 import OvernightCore
 
@@ -9,30 +8,43 @@ import OvernightCore
 /// remembers what it did and reports that back: after a crash, a relaunch, or a restore that
 /// happened while the app was closed, the menu bar shows what the machine actually reports.
 @MainActor
-final class AppModel: ObservableObject {
-    @Published private(set) var status: OvernightStatus = .off
-    @Published private(set) var isBusy = false
-    @Published private(set) var lastError: String?
+final class AppModel {
+    private(set) var status: OvernightStatus = .off
+    private(set) var isBusy = false
+    private(set) var lastError: String?
     /// Set when the machine left AC while Overnight was active and the restore has not
     /// completed yet. Drives the warning in the menu.
-    @Published private(set) var onBatteryWhileActive = false
+    private(set) var onBatteryWhileActive = false
+
+    /// Called whenever any of the four properties above settles. The menu-bar glyph follows
+    /// status through this, so it keeps up with a restore that happens while no menu is open.
+    var onChange: (() -> Void)?
 
     private let monitor = PowerSourceMonitor()
     private var refreshTimer: Timer?
 
     private var hasStarted = false
+    private var hasRequestedNotifications = false
 
-    /// Nonisolated and empty so `@StateObject private var model = AppModel()` in the `App`
-    /// struct does not have to be evaluated from a main-actor context. Startup work happens in
-    /// `start()` instead: an initializer cannot capture `self` into a concurrent task.
+    /// Nonisolated and empty so `AppDelegate` -- itself constructed from `main.swift`, which
+    /// is nonisolated top-level code -- can hold one as a stored property. Startup work happens
+    /// in `start()` instead: an initializer cannot capture `self` into a concurrent task.
     nonisolated init() {}
 
-    /// Called when the menu first appears. Idempotent, because the menu appears many times.
+    /// Called once, at launch. Arming the AC watcher cannot wait for the user to open the menu:
+    /// an unplug while Overnight is active is what the watcher exists to catch.
     func start() {
         refresh()
         guard !hasStarted else { return }
         hasStarted = true
         startPeriodicRefresh()
+    }
+
+    /// Deferred out of `start()` so a window-less, Dock-less app does not raise a system
+    /// permission dialog the first time it launches, before the user has touched anything.
+    func prepareNotifications() {
+        guard !hasRequestedNotifications else { return }
+        hasRequestedNotifications = true
         requestNotificationPermission()
     }
 
@@ -44,6 +56,9 @@ final class AppModel: ObservableObject {
         let capture = readCapture()
         let jobInstalled = FileManager.default.fileExists(atPath: OvernightPaths.launchDaemonPlist)
 
+        let wasActive = status.isActive
+        let previousStatus = status
+        let previousOnBattery = onBatteryWhileActive
         status = OvernightStatus.derive(
             sleepDisabled: sleepDisabled,
             capture: capture,
@@ -51,10 +66,22 @@ final class AppModel: ObservableObject {
         )
 
         if status.isActive {
-            startWatchingPower()
+            onBatteryWhileActive = PowerSourceMonitor.currentSource() == .battery
+            // Only on the transition. PowerSourceMonitor.start tears the IOKit source down and
+            // rebuilds it, and refresh() runs on every menu open and every timer tick -- so
+            // re-arming here would leave a window, thirty seconds apart, where an unplug
+            // notification lands on no source at all.
+            if !wasActive || !monitor.isWatching { startWatchingPower() }
         } else {
             stopWatchingPower()
             onBatteryWhileActive = false
+        }
+
+        // Only on an actual move. The timer runs in .common mode, so it fires while a menu is
+        // tracking, and an unconditional notification here cancels that tracking -- closing an
+        // open menu under the user every thirty seconds with nothing changed.
+        if status != previousStatus || onBatteryWhileActive != previousOnBattery {
+            onChange?()
         }
     }
 
@@ -76,27 +103,33 @@ final class AppModel: ObservableObject {
     private func startPeriodicRefresh() {
         // The deadline job can restore while the app is idle, and the menu should not keep
         // claiming Overnight is on for minutes afterwards.
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // .common rather than .default: menu tracking runs in NSEventTrackingRunLoopMode, and a
+        // timer scheduled only in .default stops firing for as long as a menu is open.
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             // Bound immutably before the hop: a `[weak self]` capture is a var, and a var
             // cannot be referenced from concurrently-executing code.
             guard let model = self else { return }
             Task { @MainActor in model.refresh() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
     }
 
     // MARK: - Actions
 
     func enable(hour: Int, minute: Int) {
+        refresh()
+        // The menu is a snapshot. Something else can disable sleep between the rebuild and the
+        // pick, and enabling then records that foreign flag as Overnight's own baseline.
+        guard status.canEnable else {
+            lastError = "Sleep is disabled, but not by Overnight, so it has no saved settings to restore. Overnight will not change anything."
+            onChange?()
+            return
+        }
         perform(expecting: .active) {
             let deadline = try Deadline(hour: hour, minute: minute)
             try PrivilegedRunner.run(.enable(deadline))
         }
-    }
-
-    /// Changing the deadline re-runs the same enable transaction. The restore is idempotent and
-    /// enable overwrites the job, so extending needs no separate code path.
-    func changeDeadline(hour: Int, minute: Int) {
-        enable(hour: hour, minute: minute)
     }
 
     func disable() {
@@ -117,6 +150,7 @@ final class AppModel: ObservableObject {
         guard !isBusy else { return }
         isBusy = true
         lastError = nil
+        onChange?()
 
         Task {
             let outcome: String? = await Task.detached(priority: .userInitiated) { () -> String? in
@@ -139,6 +173,7 @@ final class AppModel: ObservableObject {
             }
             self.refresh()
             if !cancelled { self.reportMismatch(expectation) }
+            self.onChange?()
         }
     }
 
@@ -159,7 +194,6 @@ final class AppModel: ObservableObject {
     // MARK: - AC watching
 
     private func startWatchingPower() {
-        onBatteryWhileActive = PowerSourceMonitor.currentSource() == .battery
         monitor.start { [weak self] source in
             Task { @MainActor in self?.handlePowerSourceChange(source) }
         }
@@ -178,10 +212,12 @@ final class AppModel: ObservableObject {
         guard status.isActive else { return }
         guard source == .battery else {
             onBatteryWhileActive = false
+            onChange?()
             return
         }
 
         onBatteryWhileActive = true
+        onChange?()
         notifyUnplugged()
         disable()
     }

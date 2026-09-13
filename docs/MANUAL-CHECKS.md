@@ -2,7 +2,7 @@
 
 Things no CI runner and no Linux host can answer. Run these on the actual MacBook.
 
-The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6, M7, M8 and M9 are the ones still outstanding before a release.**
+The 2026-09-09 spike on macOS 26.6 (Mac16,7, M4 Pro) already cleared M1–M5. **M6, M7, M8, M9 and M10 are the ones still outstanding before a release.**
 
 Throughout: `pmset -g custom` shows the per-profile timers, `pmset -g | grep SleepDisabled` shows the global flag. Capture both before you start.
 
@@ -122,6 +122,47 @@ Finder takes the icon labels' colour from the system appearance, not from the ba
 6. Drag Overnight to Applications from inside the window and confirm it lands in `/Applications`.
 
 **Pass:** a toolbar-free window at the designed size, both icons seated on their plates with the arrow between them, labels readable in both Light and Dark, the branded volume icon in the sidebar at 16pt, a crisp background at 2x, and a drag that installs.
+
+## M10. The menu renders — **outstanding**
+
+`swift test` proves what the menu should contain: `MenuPresentation` decides every item and 28 tests assert it. Nothing proves what AppKit actually draws. No runner has a menu bar.
+
+Two items here are load-bearing rather than cosmetic, and both are marked.
+
+**The state line and the warning.**
+
+1. Turn Overnight on. The menu's first item reads `On until <day> <time>.` It must be greyed and unpickable — a state line you can click is a bug, not a style choice.
+2. Unplug the mains while Overnight is active. A second greyed item appears below the first, carrying a yellow warning triangle. **On the oldest macOS you support, confirm the triangle is actually drawn.** Apple documents menu-item icons as omitted by default on macOS and points at a style modifier as the remedy; measurement on macOS 26.6 shows them rendering without it. The two disagree, so the older OS is the one that settles it. The warning's words carry the meaning on their own, so a missing triangle is a blemish rather than a failure — but find out which you have.
+3. **Hover that warning and wait for a tooltip.** It should show the full sentence the old panel's yellow box carried. A disabled menu item never highlights, and whether AppKit shows a tooltip for one is the single assumption in this change that was never verified. **If no tooltip appears, the explanation is unreachable and the item needs `attributedTitle` with an embedded newline instead** — `NSMenuItem.subtitle` is macOS 14.4 and is not available at this deployment target.
+4. With the warning showing, check that `Turn Off Now` has not moved down the menu. The warning sits above the first separator precisely so it cannot displace the item people aim at.
+
+**The submenu.**
+
+5. Hover `Wake at`. The submenu opens on hover with three times and `Custom…`. The times are aligned — they are drawn with monospaced digits, so `06:30` and `07:30` should not shift against each other.
+6. With Overnight on at 07:30, the check mark sits on `07:30` and nowhere else. Set a custom 07:15 and reopen: the check mark moves to `Custom…` and no preset carries one.
+7. Pick the time that already carries the check mark. Nothing visible should change — but `/Library/LaunchDaemons/dev.lucabattistini.overnight.restore.plist` should exist again afterwards if it had gone missing. That is the re-arm.
+
+**The state Overnight did not create.** This is the check that matters most.
+
+8. From Terminal, `sudo pmset -a disablesleep 1` while Overnight is off. Open the menu. **There must be no `Wake at` item at all.** Not greyed — absent.
+
+   If it is there and pickable, stop and do not ship. Overnight holds no capture in this state, so enabling would record the flag *something else* set as its own baseline, and every restore afterwards — including the deadline job — would put `disablesleep 1` back. Sleep could never be re-enabled from the app again.
+
+   The menu should offer `Copy Command to Clipboard`. Pick it, paste, and confirm you get `sudo pmset -a disablesleep 0`. Then run it to clean up.
+
+**The glyph.** `README.md` calls the icon the status, and nothing observes the model any more except the delegate.
+
+9. With **no menu open**, turn Overnight on and off. The band in the menu bar must change between broken and continuous each time. A band that freezes at whatever it was when the app launched means the change path is not wired.
+10. Let a deadline fire while the app is idle and no menu has been opened. Within about 30 seconds the band should go back to broken on its own.
+
+**The window.**
+
+11. Pick `Custom…`. The window must come to the front **and take keyboard focus** — type a digit and confirm it lands in the field. This app has no Dock icon, so nothing brings a window forward for it; the call that does is deprecated as of the macOS 14 SDK and reportedly unreliable for accessory apps. If focus does not arrive, the fallback is an `NSPanel` with `becomesKeyOnlyIfNeeded`.
+12. In that window, confirm ⌘C, ⌘V and ⌘A work, and that ⌘Q quits the app. A bare `NSApplication` synthesises no main menu, so these come from one the app installs itself.
+13. Close the window without confirming. The deadline must be unchanged.
+14. Open it again while Overnight is **off**, set a time, confirm. Overnight turns on. Gating this on "is it active" instead of "may it act" would make the commonest path to the feature do nothing.
+
+**Pass:** an unpickable state line, a warning that does not move the action items, a submenu whose check mark follows the real deadline, no way to enable in the state Overnight did not create, a glyph that tracks status with no menu open, and a window that takes focus.
 
 ---
 

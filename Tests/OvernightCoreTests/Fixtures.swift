@@ -5,6 +5,25 @@ import Foundation
 /// Kept verbatim (tabs and all) so the parser is exercised against the real shape, including
 /// the unmanaged keys it has to ignore and the non-numeric `hibernatefile` value.
 enum Fixtures {
+
+    /// Fixed calendar so date assertions do not depend on the machine's time zone.
+    static let romeCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+        return calendar
+    }()
+
+    static func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = 0
+        return romeCalendar.date(from: components)!
+    }
+
     static let customLaptop = """
     Battery Power:
      lidwake              1

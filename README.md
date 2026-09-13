@@ -83,13 +83,13 @@ fails the build if those three ever stop agreeing.
 
 ## Usage
 
-Click the menu bar icon. Pick a wake time. Click **Turn On** and approve the administrator prompt.
+Click the menu bar icon. Open **Wake at** and pick a time. That turns Overnight on and arms the restore in one click, behind the administrator prompt. **Custom…** opens a small window if your wake time is not one of the three presets.
 
 The icon itself is the status. It is one band — the app icon's galactic band seen edge-on, an S that leaves each end almost flat and sweeps steeply through the middle — drawn two ways: **broken in the middle when Overnight is off**, and **continuous when Overnight is holding this Mac awake**. The break lands on the inflection, where the band is steepest, so the two states are tellable apart in peripheral vision. They differ in shape rather than colour, and the glyph is a template image, so it follows a light or dark menu bar on its own.
 
 The band is geometry rather than a bitmap: `MenuBarBand` in `OvernightCore` describes it as one cubic Bézier whose control points are a single arm vector reflected through the chord's midpoint, and the app re-strokes it at whatever backing scale the menu bar asks for. That is what keeps it sharp on a Retina display, and it is why the shape can be unit-tested without a screen.
 
-While it is on, the menu shows the deadline and offers **Update Deadline** and **Turn Off Now**. Both raise an administrator prompt, because changing power settings needs root and Overnight keeps no standing privilege.
+While it is on, the menu's first line is the deadline, **Wake at** carries a check mark against the time in force, and **Turn Off Now** restores your settings. Picking a different time changes the deadline; picking the one already checked re-arms a restore timer that has gone missing. All of it raises an administrator prompt, because changing power settings needs root and Overnight keeps no standing privilege.
 
 Updating the deadline moves the wake time and re-arms the timer. It does **not** re-record your settings — the capture taken when you first turned Overnight on is kept, so the values restored at the end are always your real ones, however many times you extend.
 

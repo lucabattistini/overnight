@@ -50,6 +50,17 @@ public struct Deadline: Equatable, Sendable {
         self.date = candidate
     }
 
+    public init(minutesSinceMidnight minutes: Int, now: Date = Date(), calendar: Calendar = .current) throws {
+        try self.init(
+            hour: minutes >= 0 ? minutes / 60 : -1,
+            minute: minutes >= 0 ? minutes % 60 : 0,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    public var minutesSinceMidnight: Int { hour * 60 + minute }
+
     /// The calendar fields `launchd` needs for a one-shot `StartCalendarInterval`.
     ///
     /// Month and day are included so the job is effectively one-shot even if the restore
@@ -66,5 +77,9 @@ public struct Deadline: Equatable, Sendable {
     public var epochSeconds: Int { Int(date.timeIntervalSince1970) }
 
     /// `07:30`, for display.
-    public var shortLabel: String { String(format: "%02d:%02d", hour, minute) }
+    public var shortLabel: String { Self.label(hour: hour, minute: minute) }
+
+    public static func label(hour: Int, minute: Int) -> String {
+        String(format: "%02d:%02d", hour, minute)
+    }
 }

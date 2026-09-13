@@ -36,6 +36,13 @@ public enum OvernightStatus: Equatable, Sendable {
         }
     }
 
+    public var canEnable: Bool {
+        switch self {
+        case .off, .offWithStaleState, .active, .activeTimerMissing: return true
+        case .externallyDisabled: return false
+        }
+    }
+
     public var deadline: Date? {
         switch self {
         case .active(let d), .activeTimerMissing(let d): return d

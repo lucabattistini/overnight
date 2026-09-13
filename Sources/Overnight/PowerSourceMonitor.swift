@@ -19,6 +19,8 @@ final class PowerSourceMonitor {
     }
 
     private var runLoopSource: CFRunLoopSource?
+
+    var isWatching: Bool { runLoopSource != nil }
     private var onChange: ((Source) -> Void)?
     private var lastSource: Source = .unknown
 
@@ -51,12 +53,12 @@ final class PowerSourceMonitor {
         }
 
         runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
     }
 
     func stop() {
         if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
         runLoopSource = nil
         onChange = nil
