@@ -91,4 +91,24 @@ final class DeadlineTests: XCTestCase {
         let deadline = try Deadline(hour: 7, minute: 30, now: now, calendar: calendar)
         XCTAssertEqual(deadline.epochSeconds, Int(date(2026, 9, 10, 7, 30).timeIntervalSince1970))
     }
+
+    // MARK: - Minutes since midnight
+
+    func testMinutesSinceMidnightRoundTrips() throws {
+        for (minutes, hour, minute) in [(0, 0, 0), (435, 7, 15), (720, 12, 0), (1439, 23, 59)] {
+            let deadline = try Deadline(minutesSinceMidnight: minutes, now: date(2026, 9, 13, 0, 1), calendar: calendar)
+            XCTAssertEqual(deadline.hour, hour)
+            XCTAssertEqual(deadline.minute, minute)
+            XCTAssertEqual(deadline.minutesSinceMidnight, minutes)
+        }
+    }
+
+    func testMinutesSinceMidnightRejectsAnOutOfRangeValue() {
+        // The stored value comes from UserDefaults, so a poisoned value must not reach the
+        // privileged argument path. It throws Deadline's own typed error, not a new one.
+        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: 1440, now: Date(), calendar: calendar)) { error in
+            XCTAssertEqual(error as? Deadline.DeadlineError, .hourOutOfRange(24))
+        }
+        XCTAssertThrowsError(try Deadline(minutesSinceMidnight: -1, now: Date(), calendar: calendar))
+    }
 }

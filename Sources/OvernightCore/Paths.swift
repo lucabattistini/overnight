@@ -18,4 +18,6 @@ public enum OvernightPaths {
     public static let launchDaemonPlist = "/Library/LaunchDaemons/\(launchDaemonLabel).plist"
 
     public static let pmsetExecutable = "/usr/bin/pmset"
+
+    public static let recoveryCommand = "sudo pmset -a disablesleep 0"
 }

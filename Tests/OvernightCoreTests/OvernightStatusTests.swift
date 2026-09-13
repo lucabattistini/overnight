@@ -51,6 +51,20 @@ final class OvernightStatusTests: XCTestCase {
         XCTAssertEqual(status, .activeTimerMissing(deadline: past.deadline))
     }
 
+    func testOnlyExternallyDisabledForbidsEnabling() {
+        // AE6: with no capture of its own, enabling here would record the foreign
+        // SleepDisabled 1 as Overnight's baseline and no restore could ever clear it.
+        XCTAssertFalse(OvernightStatus.externallyDisabled.canEnable)
+        for status: OvernightStatus in [
+            .off,
+            .offWithStaleState,
+            .active(deadline: nil),
+            .activeTimerMissing(deadline: nil),
+        ] {
+            XCTAssertTrue(status.canEnable, "\(status) should allow a wake time to be set")
+        }
+    }
+
     func testUnreportedFlagFallsBackToTheCapture() {
         // When `pmset -g` does not surface SleepDisabled, an existing capture is the better
         // evidence: the app still offers a restore instead of claiming to be off.

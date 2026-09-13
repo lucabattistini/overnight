@@ -80,7 +80,7 @@ Meanwhile the one fact a user opens the panel to learn, the deadline, is rendere
 - R15. The `Wake at` submenu is offered only in states where Overnight may act. It is withheld in `externallyDisabled`, where enabling would record a foreign `SleepDisabled 1` as Overnight's baseline and leave every later restore re-disabling sleep.
 - R16. Startup work runs when the app launches, not when the menu is first opened, so the AC-unplug watcher is armed whether or not the user has opened the menu.
 - R17. The state the menu shows is re-read when the menu opens.
-- R18. While a privileged operation is in flight, the state item says so and every actionable item is disabled. No selection is accepted and silently dropped.
+- R18. While a privileged operation is in flight, the state item says so and every item that would start or change one is withheld or disabled. No selection is accepted and silently dropped. `Refresh` and `Quit` stay usable, because neither goes through the in-flight guard and disabling `Quit` would strand the user behind a hung authorization prompt.
 
 ### Key Flows
 

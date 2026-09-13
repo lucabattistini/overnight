@@ -50,6 +50,17 @@ public struct Deadline: Equatable, Sendable {
         self.date = candidate
     }
 
+    public init(minutesSinceMidnight minutes: Int, now: Date = Date(), calendar: Calendar = .current) throws {
+        try self.init(
+            hour: minutes >= 0 ? minutes / 60 : -1,
+            minute: minutes >= 0 ? minutes % 60 : 0,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    public var minutesSinceMidnight: Int { hour * 60 + minute }
+
     /// The calendar fields `launchd` needs for a one-shot `StartCalendarInterval`.
     ///
     /// Month and day are included so the job is effectively one-shot even if the restore
