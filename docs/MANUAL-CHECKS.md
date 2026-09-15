@@ -148,6 +148,8 @@ Two items here are load-bearing rather than cosmetic, and both are marked.
 
    If it is there and pickable, stop and do not ship. Overnight holds no capture in this state, so enabling would record the flag *something else* set as its own baseline, and every restore afterwards — including the deadline job — would put `disablesleep 1` back. Sleep could never be re-enabled from the app again.
 
+   The privileged payload now refuses this independently — `payload/overnight-enable.sh` aborts a fresh capture when the live flag already reads `1`, and `tests/payload/run.sh` covers it. So a pickable item is a menu bug rather than an unrecoverable one. Check the menu anyway: the payload's refusal arrives *after* the administrator prompt, which is a much worse experience than an item that was never offered.
+
    The menu should offer `Copy Command to Clipboard`. Pick it, paste, and confirm you get `sudo pmset -a disablesleep 0`. Then run it to clean up.
 
 **The glyph.** `README.md` calls the icon the status, and nothing observes the model any more except the delegate.

@@ -276,6 +276,32 @@ if run_enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
 else ok "aborts on an overlong captured value"; fi
 teardown
 
+# --- enable: a foreign SleepDisabled must not be adopted -----------------------------------
+echo "enable / foreign SleepDisabled"
+
+setup
+printf 'System-wide power settings:\n SleepDisabled\t\t1\n' > "$OVERNIGHT_STUB_LIVE"
+if ERR=$(run_enable 9 10 7 30 1788000000 2>&1 >/dev/null); then
+    bad "refuses to adopt a SleepDisabled flag it did not set"
+else ok "refuses to adopt a SleepDisabled flag it did not set"; fi
+assert_contains "names the recovery command in the refusal" "$ERR" "pmset -a disablesleep 0"
+check "writes no state file after refusing a foreign flag" \
+    "$([ -f "$WORK/support/state.conf" ] && echo yes || echo no)" "no"
+check "arms no deadline job after refusing a foreign flag" \
+    "$([ -f "$WORK/daemons/dev.lucabattistini.overnight.restore.plist" ] && echo yes || echo no)" "no"
+assert_absent "no pmset write after refusing a foreign flag" "$(cat "$OVERNIGHT_TEST_LOG")" "pmset -c"
+assert_absent "installs no restore copy after refusing a foreign flag" "$(cat "$OVERNIGHT_TEST_LOG")" "install -o root"
+teardown
+
+setup
+printf 'System-wide power settings:\n DestroyFVKeyOnStandby 0\n' > "$OVERNIGHT_STUB_LIVE"
+if run_enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    ok "still captures when this macOS does not report the flag"
+else bad "still captures when this macOS does not report the flag"; fi
+assert_contains "still captures the AC profile" "$(cat "$WORK/support/state.conf" 2>/dev/null)" "ac_sleep 30"
+assert_absent "omits a flag it never saw" "$(cat "$WORK/support/state.conf" 2>/dev/null)" "prior_sleep_disabled"
+teardown
+
 # --- enable: a failure to arm must not leave the machine changed --------------------------
 echo "enable / failure to arm"
 
