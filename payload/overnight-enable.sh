@@ -138,6 +138,7 @@ else
     PROFILES=$(capture_profiles) || fail "could not parse 'pmset -g custom'"
     [ -n "$PROFILES" ] || fail "'pmset -g custom' reported none of the managed settings"
     PRIOR_SLEEP_DISABLED=$(capture_sleep_disabled || true)
+    [ "$PRIOR_SLEEP_DISABLED" = "1" ] && fail "sleep is already disabled system-wide and Overnight holds no capture; refusing to adopt a flag it did not set. Clear it with 'sudo pmset -a disablesleep 0' and try again"
     STATE_BODY=$(
         echo "version 1"
         if [ -n "$PRIOR_SLEEP_DISABLED" ]; then

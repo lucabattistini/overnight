@@ -276,6 +276,27 @@ if run_enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
 else ok "aborts on an overlong captured value"; fi
 teardown
 
+# --- enable: a foreign SleepDisabled must not be adopted -----------------------------------
+echo "enable / foreign SleepDisabled"
+
+setup
+printf 'System-wide power settings:\n SleepDisabled\t\t1\n' > "$OVERNIGHT_STUB_LIVE"
+if run_enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    bad "refuses to adopt a SleepDisabled flag it did not set"
+else ok "refuses to adopt a SleepDisabled flag it did not set"; fi
+check "writes no state file after refusing a foreign flag" \
+    "$([ -f "$WORK/support/state.conf" ] && echo yes || echo no)" "no"
+assert_absent "no pmset write after refusing a foreign flag" "$(cat "$OVERNIGHT_TEST_LOG")" "pmset -c"
+teardown
+
+setup
+printf 'System-wide power settings:\n DestroyFVKeyOnStandby 0\n' > "$OVERNIGHT_STUB_LIVE"
+if run_enable 9 10 7 30 1788000000 >/dev/null 2>&1; then
+    ok "still captures when this macOS does not report the flag"
+else bad "still captures when this macOS does not report the flag"; fi
+assert_absent "omits a flag it never saw" "$(cat "$WORK/support/state.conf")" "prior_sleep_disabled"
+teardown
+
 # --- enable: a failure to arm must not leave the machine changed --------------------------
 echo "enable / failure to arm"
 
